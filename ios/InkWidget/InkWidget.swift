@@ -9,6 +9,8 @@
 //   잠금 화면 : 직사각형 / 원형 / 시계 위 한 줄 (todo.exe · diary.exe 와 같은 모양)
 //
 // 새로 고침: 20분마다 + 자정 직후 (iOS 가 하루 횟수를 조절한다). 인터넷이 안 되면 마지막으로 받은 것을 보여준다.
+// 앱에서 글을 올리거나 화면 모드를 바꾸면 앱이 위젯을 바로 새로 그리게 한다.
+// 색은 앱의 화면 모드(자동 · 다크 · 라이트)를 따른다: 앱과 App Group(group.com.isla0x.inkexe)을 같이 쓴다.
 
 import SwiftUI
 import WidgetKit
@@ -16,6 +18,22 @@ import WidgetKit
 private let serverURL = "https://eqadkyrdcpdjomvhpkgi.supabase.co"
 private let publishableKey = "sb_publishable_AbU7JlZV_FAoXJXdwE9egg_YUKtu94V"
 private let cacheKey = "ink_widget_status_v1"
+/// 앱과 같이 쓰는 저장소. 앱의 화면 모드(auto · dark · light)를 여기서 읽는다 (lib/widget_sync.dart).
+private let appGroupId = "group.com.isla0x.inkexe"
+private let modeKey = "mode"
+
+/// 앱에서 고른 화면 모드. auto 면 아이폰 설정을 따른다.
+private func appThemeMode() -> String {
+    UserDefaults(suiteName: appGroupId)?.string(forKey: modeKey) ?? "auto"
+}
+
+private func isLight(_ scheme: ColorScheme) -> Bool {
+    switch appThemeMode() {
+    case "light": return true
+    case "dark": return false
+    default: return scheme == .light
+    }
+}
 private let seoul = TimeZone(identifier: "Asia/Seoul") ?? .current
 
 // MARK: - 데이터
@@ -406,7 +424,7 @@ struct InkWidgetView: View {
     @Environment(\.colorScheme) private var scheme
     let entry: InkEntry
 
-    private var colors: TermColors { TermColors.of(light: scheme == .light) }
+    private var colors: TermColors { TermColors.of(light: isLight(scheme)) }
 
     var body: some View {
         switch family {

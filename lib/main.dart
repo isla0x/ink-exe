@@ -14,6 +14,7 @@ import 'screens/rules_screen.dart';
 import 'state/ink_store.dart';
 import 'state/pen_shop.dart';
 import 'theme/term_palette.dart';
+import 'widget_sync.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,7 +33,7 @@ Future<void> main() async {
     shop = DemoPenShop();
   }
 
-  final store = InkStore(api: api, shop: shop);
+  final store = InkStore(api: api, shop: shop, widgets: await WidgetSync.create());
   store.systemBrightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
   await store.loadPrefs();
   unawaited(store.start());

@@ -4,6 +4,7 @@ import 'package:ink_exe/data/demo_api.dart';
 import 'package:ink_exe/data/models.dart';
 import 'package:ink_exe/state/ink_store.dart';
 import 'package:ink_exe/state/pen_shop.dart';
+import 'package:ink_exe/widget_sync.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -254,4 +255,27 @@ void main() {
     expect(again.themeMode, 'light', reason: '앱을 다시 켜도 기억');
     expect(again.brightness.value, Brightness.light);
   });
+
+  test('화면 모드를 바꾸면 위젯에도 알리고, 글을 올리면 위젯을 새로 그린다', () async {
+    final w = _FakeWidgets();
+    final s2 = InkStore(api: api, widgets: w, clock: () => now, autoRefresh: false);
+    await s2.init();
+    expect(w.modes, ['auto'], reason: '앱을 켜면 지금 모드를 위젯에 맞춘다');
+    await s2.setThemeMode('light');
+    expect(w.modes.last, 'light');
+    await s2.submit('위젯 새로 고침');
+    await Future<void>.delayed(Duration.zero);
+    expect(w.reloads, greaterThanOrEqualTo(1));
+  });
+}
+
+class _FakeWidgets implements WidgetBridge {
+  final modes = <String>[];
+  int reloads = 0;
+
+  @override
+  Future<void> setThemeMode(String mode) async => modes.add(mode);
+
+  @override
+  Future<void> reload() async => reloads++;
 }

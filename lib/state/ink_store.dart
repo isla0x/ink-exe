@@ -7,17 +7,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/ink_api.dart';
 import '../data/models.dart';
 import '../theme/term_palette.dart';
+import '../widget_sync.dart';
 import 'pen_shop.dart';
 
 /// 앱 상태: 게시판을 불러오고, 글 · +1 · 신고 · 차단을 처리한다.
 class InkStore extends ChangeNotifier {
-  InkStore({required this.api, this.shop, DateTime Function()? clock, this.autoRefresh = true})
+  InkStore({required this.api, this.shop, this.widgets, DateTime Function()? clock, this.autoRefresh = true})
       : _clock = clock ?? DateTime.now;
 
   final InkApi api;
 
   /// 펜네임 결제 창구. null 이면 이 기기에서는 펜네임을 살 수 없다 (안드로이드 등).
   final PenShop? shop;
+
+  /// 홈 화면 위젯. null 이면 위젯 없음 (안드로이드 · 테스트).
+  final WidgetBridge? widgets;
   final DateTime Function() _clock;
 
   /// 테스트에서는 끈다 (타이머가 남으면 테스트가 끝나지 않는다).
@@ -76,6 +80,7 @@ class InkStore extends ChangeNotifier {
     themeMode = mode;
     await _prefs?.setString(_themeKey, mode);
     _applyBrightness();
+    await widgets?.setThemeMode(mode);
   }
 
   /// 앱 전체 테마만 다시 그리면 되는 변화 (1초마다 도는 시계와 분리).
@@ -101,6 +106,9 @@ class InkStore extends ChangeNotifier {
     final mode = _prefs!.getString(_themeKey);
     if (mode != null && themeModes.contains(mode)) themeMode = mode;
     brightness.value = isLight ? Brightness.light : Brightness.dark;
+    // 위젯도 같은 모드로 (예전에 고른 값이 위젯에 아직 없을 수 있다).
+    final w = widgets;
+    if (w != null) unawaited(w.setThemeMode(themeMode));
   }
 
   Future<void> init() async {
@@ -163,6 +171,8 @@ class InkStore extends ChangeNotifier {
       final r = await api.post(body, kind: kind, title: title, author: author);
       notice = ('ok', '#${two(r.slot)} 자리에 올렸어요. 남은 자리 ${r.cap - r.count}');
       await refresh(quiet: true);
+      final w = widgets;
+      if (w != null) unawaited(w.reload());
       return null;
     } on InkError catch (e) {
       if (e.code == 'full' || e.code == 'already' || e.code == 'banned') await refresh(quiet: true);

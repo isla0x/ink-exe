@@ -1,7 +1,7 @@
 name: ink_exe
 description: "ink.exe — 매일 글감 하나, 선착순 20명이 쓰는 익명 짧은 글 게시판"
 publish_to: "none"
-version: 1.0.0+5
+version: 1.0.0+6
 
 environment:
   sdk: ^3.5.0
@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  home_widget: ">=0.9.0 <0.11.0"
   in_app_purchase: ^3.2.0
   shared_preferences: ^2.3.0
   supabase_flutter: ^2.8.0

@@ -137,7 +137,7 @@ class _ThemeRow extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            store.themeMode == 'auto' ? '아이폰 설정(다크 모드)을 따라가요.' : '홈 화면 위젯은 아이폰 설정을 따라가요.',
+            store.themeMode == 'auto' ? '아이폰 설정(다크 모드)을 따라가요. 홈 화면 위젯도 같아요.' : '홈 화면 위젯도 같은 색으로 바뀌어요.',
             style: termStyle(p.dim, size: 11, ko: true),
           ),
         ],
