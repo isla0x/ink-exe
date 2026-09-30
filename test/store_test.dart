@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart' show Brightness;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_exe/data/demo_api.dart';
 import 'package:ink_exe/data/models.dart';
@@ -231,5 +232,26 @@ void main() {
       expect(fresh.penNotice!.$2, contains('복원'));
       fresh.dispose();
     });
+  });
+
+  test('화면 모드: 자동은 시스템을 따르고, 다크 · 라이트는 고정 + 저장', () async {
+    store.systemBrightness = Brightness.dark;
+    expect(store.themeMode, 'auto');
+    expect(store.palette.isLight, isFalse);
+    store.systemBrightness = Brightness.light;
+    expect(store.palette.isLight, isTrue);
+
+    await store.setThemeMode('dark');
+    expect(store.palette.isLight, isFalse, reason: '시스템이 라이트여도 다크 고정');
+    expect(store.brightness.value, Brightness.dark);
+
+    await store.setThemeMode('light');
+    store.systemBrightness = Brightness.dark;
+    expect(store.palette.isLight, isTrue, reason: '시스템이 다크여도 라이트 고정');
+
+    final again = InkStore(api: api, clock: () => now, autoRefresh: false);
+    await again.loadPrefs();
+    expect(again.themeMode, 'light', reason: '앱을 다시 켜도 기억');
+    expect(again.brightness.value, Brightness.light);
   });
 }

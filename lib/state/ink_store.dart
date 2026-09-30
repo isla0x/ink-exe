@@ -25,6 +25,10 @@ class InkStore extends ChangeNotifier {
 
   static const _rulesKey = 'ink_rules_v1';
   static const _blockKey = 'ink_blocked_v1';
+  static const _themeKey = 'ink_theme_v1';
+
+  /// 화면 모드: auto (아이폰 설정 따라감) · dark · light
+  static const themeModes = ['auto', 'dark', 'light'];
   static const _refreshEvery = Duration(seconds: 30);
 
   SharedPreferences? _prefs;
@@ -54,14 +58,30 @@ class InkStore extends ChangeNotifier {
   set systemBrightness(Brightness b) {
     if (b == _systemBrightness) return;
     _systemBrightness = b;
-    brightness.value = b;
+    _applyBrightness();
+  }
+
+  /// auto · dark · light
+  String themeMode = 'auto';
+
+  bool get isLight => themeMode == 'light' || (themeMode == 'auto' && _systemBrightness == Brightness.light);
+
+  void _applyBrightness() {
+    brightness.value = isLight ? Brightness.light : Brightness.dark;
     notifyListeners();
+  }
+
+  Future<void> setThemeMode(String mode) async {
+    if (!themeModes.contains(mode) || mode == themeMode) return;
+    themeMode = mode;
+    await _prefs?.setString(_themeKey, mode);
+    _applyBrightness();
   }
 
   /// 앱 전체 테마만 다시 그리면 되는 변화 (1초마다 도는 시계와 분리).
   final ValueNotifier<Brightness> brightness = ValueNotifier(Brightness.dark);
 
-  TermPalette get palette => TermPalette.of('cmd', light: _systemBrightness == Brightness.light);
+  TermPalette get palette => TermPalette.of('cmd', light: isLight);
 
   DateTime now() => _clock();
 
@@ -78,6 +98,9 @@ class InkStore extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
     agreed = _prefs!.getBool(_rulesKey) ?? false;
     blocked.addAll(_prefs!.getStringList(_blockKey) ?? const []);
+    final mode = _prefs!.getString(_themeKey);
+    if (mode != null && themeModes.contains(mode)) themeMode = mode;
+    brightness.value = isLight ? Brightness.light : Brightness.dark;
   }
 
   Future<void> init() async {

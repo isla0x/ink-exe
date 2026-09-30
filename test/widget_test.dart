@@ -188,4 +188,19 @@ void main() {
     final xs = [for (final l in likes.evaluate()) tester.getRect(find.byWidget(l.widget)).center.dx];
     expect(xs.toSet().length, 1, reason: '+N 버튼이 한 줄로 세로 정렬');
   });
+
+  testWidgets('log 화면에서 라이트 · 다크 고르기', (tester) async {
+    await boot(tester, agreed: true);
+    await tester.tap(find.text('log'));
+    await settle(tester);
+    expect(find.text('자동'), findsOneWidget);
+    await tester.ensureVisible(find.text('라이트'));
+    await tester.tap(find.text('라이트'));
+    await settle(tester);
+    expect(store.themeMode, 'light');
+    expect(store.palette.isLight, isTrue);
+    await tester.tap(find.text('다크'));
+    await settle(tester);
+    expect(store.palette.isLight, isFalse);
+  });
 }

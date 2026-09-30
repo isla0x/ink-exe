@@ -1,7 +1,7 @@
 name: ink_exe
 description: "ink.exe — 매일 글감 하나, 선착순 20명이 쓰는 익명 짧은 글 게시판"
 publish_to: "none"
-version: 1.0.0+4
+version: 1.0.0+5
 
 environment:
   sdk: ^3.5.0

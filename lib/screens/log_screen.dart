@@ -59,6 +59,7 @@ class _LogScreenState extends State<LogScreen> {
                       TextSpan(text: 'log --mine', style: termStyle(p.cmd)),
                     ])),
                     if (store.shop != null) PenPanel(store: store),
+                    _ThemeRow(store: store),
                     Text('내가 쓴 글 ${list.length}편', style: termStyle(p.hi, ko: true)),
                     Text('이 기기에서 쓴 글이에요. 앱을 지우면 목록도 사라져요.', style: termStyle(p.dim, size: 12, ko: true)),
                     const SizedBox(height: 8),
@@ -96,6 +97,51 @@ class _LogScreenState extends State<LogScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+/// 화면 모드: [자동] [다크] [라이트]
+class _ThemeRow extends StatelessWidget {
+  const _ThemeRow({required this.store});
+
+  final InkStore store;
+
+  static const _labels = {'auto': '자동', 'dark': '다크', 'light': '라이트'};
+
+  @override
+  Widget build(BuildContext context) {
+    final p = store.palette;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('화면', style: termStyle(p.dim, size: 12, ko: true)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              for (final m in InkStore.themeModes) ...[
+                if (m != InkStore.themeModes.first) const SizedBox(width: 8),
+                Expanded(
+                  child: TermBoxButton(
+                    palette: p,
+                    label: _labels[m]!,
+                    selected: store.themeMode == m,
+                    semanticLabel: '화면 ${_labels[m]}',
+                    onTap: () => store.setThemeMode(m),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            store.themeMode == 'auto' ? '아이폰 설정(다크 모드)을 따라가요.' : '홈 화면 위젯은 아이폰 설정을 따라가요.',
+            style: termStyle(p.dim, size: 11, ko: true),
+          ),
+        ],
+      ),
     );
   }
 }
