@@ -314,4 +314,32 @@ select set_config('request.jwt.claim.sub', t.u(60)::text, false);
 do $$ begin assert public.my_pen() ->> 'name' = '큰새'; end $$;
 reset role;
 
+-- ── 13. 위젯 요약: 오늘 1위 ──
+reset role;
+set ink.fake_now = '2026-10-10 12:00:00+09';
+set role anon;
+do $$ declare st json;
+begin
+  st := public.board_status();
+  assert st -> 'top' is null or json_typeof(st -> 'top') = 'null', '+1 받은 글이 없으면 top 은 비어 있다';
+  assert (st ->> 'count')::int = 0;
+end $$;
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(70)::text, false);
+select public.post_entry('위젯에 뜰 글');
+select set_config('request.jwt.claim.sub', t.u(71)::text, false);
+select public.toggle_like((select (x ->> 'id')::bigint from json_array_elements(public.get_board() -> 'posts') x limit 1));
+reset role;
+set role anon;
+do $$ declare st json;
+begin
+  st := public.board_status();
+  assert st -> 'top' ->> 'body' = '위젯에 뜰 글', st::text;
+  assert (st -> 'top' ->> 'likes')::int = 1;
+  assert st -> 'top' ->> 'nick' like 'guest\_%';
+  assert (st ->> 'count')::int = 1;
+end $$;
+reset role;
+
 select 'all db tests passed' as result;

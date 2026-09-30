@@ -237,7 +237,7 @@ begin
   );
 end $$;
 
--- 위젯 · 공유용 요약 (로그인 없이도 부를 수 있다).
+-- 위젯 · 공유용 요약 (로그인 없이도 부를 수 있다). top = 오늘 지금 1위 (+1 이 하나 이상인 글).
 create or replace function public.board_status() returns json
 language sql stable security definer set search_path = public as $$
   select json_build_object(
@@ -245,7 +245,19 @@ language sql stable security definer set search_path = public as $$
     'topic', ink_topic(ink_today()),
     'cap', (select cap from ink_settings where id = 1),
     'count', (select count(*) from ink_posts where day = ink_today()),
-    'seconds_left', ink_seconds_left()
+    'seconds_left', ink_seconds_left(),
+    'top', (
+      select json_build_object(
+        'slot', p.slot,
+        'nick', coalesce(p.pen, ink_nick(p.user_id, p.day)),
+        'body', left(p.body, 120),
+        'likes', p.likes,
+        'kind', p.kind,
+        'src_title', p.src_title,
+        'src_author', p.src_author)
+        from ink_posts p
+       where p.day = ink_today() and ink_hall_eligible(p)
+       order by p.likes desc, p.slot asc limit 1)
   )
 $$;
 
