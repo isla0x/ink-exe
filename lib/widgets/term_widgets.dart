@@ -72,13 +72,12 @@ class TitleBar extends StatelessWidget {
 }
 
 class _TabLink extends StatelessWidget {
-  const _TabLink({required this.label, required this.active, required this.palette, this.onTap, this.color});
+  const _TabLink({required this.label, required this.active, required this.palette, this.onTap});
 
   final String label;
   final bool active;
   final TermPalette palette;
   final VoidCallback? onTap;
-  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +93,7 @@ class _TabLink extends StatelessWidget {
             height: 44,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             alignment: Alignment.center,
-            child: Text(label, style: termStyle(active ? p.bg : (color ?? p.dim), size: 13)),
+            child: Text(label, style: termStyle(active ? p.bg : p.dim, size: 13)),
           ),
         ),
       ),

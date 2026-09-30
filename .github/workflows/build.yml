@@ -50,7 +50,13 @@ jobs:
 
       # APK 가 먼저 나오도록 린트는 마지막에 돌린다.
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        run: |
+          if ! out=$(flutter analyze --no-fatal-infos 2>&1); then
+            echo "$out"
+            echo "$out" | grep -E "(warning|error) •" | head -30 | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          fi
+          echo "$out"
 
   # 서버(Supabase) SQL: 빈 Postgres 에 스키마를 올리고 규칙 테스트를 돌린다.
   db:
