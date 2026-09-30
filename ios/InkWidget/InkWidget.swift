@@ -6,7 +6,7 @@
 //
 // 지원 크기
 //   홈 화면   : 작게 / 중간
-//   잠금 화면 : 직사각형 / 시계 위 한 줄
+//   잠금 화면 : 직사각형 / 원형 / 시계 위 한 줄 (todo.exe · diary.exe 와 같은 모양)
 //
 // 새로 고침: 20분마다 + 자정 직후 (iOS 가 하루 횟수를 조절한다). 인터넷이 안 되면 마지막으로 받은 것을 보여준다.
 
@@ -327,6 +327,10 @@ struct MediumView: View {
 
 // MARK: - 잠금화면 위젯
 
+/// 직사각형: 3줄 터미널 (todo.exe · diary.exe 와 같은 모양)
+///   C:\ink> 12/20
+///   > 파란 나무
+///   > 마감 13:52:01
 struct LockRectView: View {
     let entry: InkEntry
 
@@ -334,21 +338,52 @@ struct LockRectView: View {
         VStack(alignment: .leading, spacing: 1) {
             if let s = entry.snap, !entry.stale {
                 let st = s.status
-                Text("C:\\ink> topic").font(mono(10)).opacity(0.75)
-                Text(st.topic).font(mono(14, .bold)).lineLimit(1).minimumScaleFactor(0.7).widgetAccentable()
-                HStack(spacing: 4) {
-                    Text(st.count >= st.cap ? "FULL" : "\(st.count)/\(st.cap)").font(mono(11))
-                    Text("·").font(mono(11)).opacity(0.6)
+                let full = st.count >= st.cap
+                Text("C:\\ink> " + (full ? "FULL" : "\(st.count)/\(st.cap)"))
+                    .font(mono(13, .bold))
+                    .widgetAccentable()
+                Text("> " + st.topic)
+                    .font(mono(12))
+                    .lineLimit(1)
+                HStack(spacing: 0) {
+                    Text(full ? "> 다음 " : "> 마감 ").font(mono(12))
                     Text(timerInterval: entry.date...max(entry.date, s.deadline), countsDown: true)
-                        .font(mono(11)).monospacedDigit()
+                        .font(mono(12))
+                        .monospacedDigit()
                 }
                 .lineLimit(1)
             } else {
-                Text("C:\\ink>_").font(mono(13, .bold)).widgetAccentable()
-                Text(entry.snap == nil ? "연결 중..." : "새 글감 여는 중...").font(mono(11))
+                Text("C:\\ink> topic")
+                    .font(mono(13, .bold))
+                    .widgetAccentable()
+                Text(entry.snap == nil ? "> 연결 중..." : "> 새 글감 여는 중...").font(mono(12)).lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// 원형: 남은 자리 + 찬 자리 링 (todo.exe 와 같은 모양)
+struct LockCircleView: View {
+    let entry: InkEntry
+
+    var body: some View {
+        if let s = entry.snap, !entry.stale {
+            let st = s.status
+            Gauge(value: Double(min(st.count, st.cap)), in: 0...Double(max(st.cap, 1))) {
+                Text(">_").font(mono(10))
+            } currentValueLabel: {
+                Text("\(max(st.cap - st.count, 0))").font(mono(18, .bold))
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+            .widgetAccentable()
+        } else {
+            ZStack {
+                AccessoryWidgetBackground()
+                Text(">_").font(mono(14, .bold))
+            }
+            .widgetAccentable()
+        }
     }
 }
 
@@ -377,6 +412,8 @@ struct InkWidgetView: View {
         switch family {
         case .accessoryRectangular:
             LockRectView(entry: entry).containerBackground(for: .widget) { Color.clear }
+        case .accessoryCircular:
+            LockCircleView(entry: entry).containerBackground(for: .widget) { Color.clear }
         case .accessoryInline:
             LockInlineView(entry: entry).containerBackground(for: .widget) { Color.clear }
         case .systemMedium:
@@ -396,7 +433,7 @@ struct InkWidget: Widget {
         }
         .configurationDisplayName("ink.exe")
         .description("오늘의 글감, 남은 자리, 마감까지 남은 시간.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular, .accessoryInline])
         .contentMarginsDisabled()
     }
 }
@@ -422,6 +459,12 @@ struct InkWidget: Widget {
 }
 
 #Preview("잠금 직사각형", as: .accessoryRectangular) {
+    InkWidget()
+} timeline: {
+    InkEntry(date: .now, snap: .sample)
+}
+
+#Preview("잠금 원형", as: .accessoryCircular) {
     InkWidget()
 } timeline: {
     InkEntry(date: .now, snap: .sample)
