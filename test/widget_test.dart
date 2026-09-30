@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_exe/data/demo_api.dart';
 import 'package:ink_exe/main.dart';
 import 'package:ink_exe/state/ink_store.dart';
+import 'package:ink_exe/state/pen_shop.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -19,8 +20,9 @@ void main() {
     for (var i = 0; i < others; i++) {
       await api.postAs('u$i', '다른 사람 글 $i');
     }
-    store = InkStore(api: api, clock: () => now, autoRefresh: false);
+    store = InkStore(api: api, shop: DemoPenShop(), clock: () => now, autoRefresh: false);
     await store.init();
+    await store.initPen();
     await tester.pumpWidget(InkExeApp(store: store));
     await tester.pump();
   }
@@ -135,5 +137,41 @@ void main() {
     tester.state<NavigatorState>(find.byType(Navigator)).pop();
     await settle(tester);
     expect(find.text('쓰기'), findsOneWidget);
+  });
+
+  testWidgets('log 에서 펜네임 사기 → 정하기 → 글에 붙는다', (tester) async {
+    await boot(tester, agreed: true);
+    await tester.tap(find.text('log'));
+    await settle(tester);
+    expect(find.text('guest_0000 대신 내 이름으로'), findsOneWidget);
+    expect(find.text('펜네임 사기 · ₩2,200'), findsOneWidget);
+    expect(find.text('구매 복원'), findsOneWidget);
+
+    await tester.tap(find.text('펜네임 사기 · ₩2,200'));
+    await settle(tester);
+    expect(find.text('펜네임을 정해 주세요'), findsOneWidget);
+
+    await tester.tap(find.text('이름 정하기'));
+    await settle(tester);
+    await tester.enterText(find.byType(TextField), '작은 새');
+    await tester.tap(find.text('정하기'));
+    await settle(tester);
+    expect(find.textContaining('띄어쓰기 불가'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '작은새');
+    await tester.tap(find.text('정하기'));
+    await settle(tester);
+    expect(find.text('작은새'), findsOneWidget);
+    expect(find.textContaining('이후에 바꿀 수 있어요'), findsOneWidget);
+
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await settle(tester);
+    await tester.tap(find.text('쓰기'));
+    await settle(tester);
+    await tester.enterText(find.byType(TextField), '펜네임으로 쓴 첫 글');
+    await tester.pump();
+    await tester.tap(find.text('올리기'));
+    await settle(tester);
+    expect(find.text('작은새 (나)'), findsOneWidget);
   });
 }

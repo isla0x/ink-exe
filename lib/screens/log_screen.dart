@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../state/ink_store.dart';
 import '../widgets/entry_card.dart';
+import '../widgets/pen_panel.dart';
 import '../widgets/term_widgets.dart';
 import '../theme/term_palette.dart';
 import 'nav_tabs.dart';
@@ -24,6 +25,7 @@ class _LogScreenState extends State<LogScreen> {
   @override
   void initState() {
     super.initState();
+    widget.store.loadPen();
     widget.store.loadMine().then((err) {
       if (mounted) {
         setState(() {
@@ -56,6 +58,7 @@ class _LogScreenState extends State<LogScreen> {
                       TextSpan(text: 'C:\\ink> ', style: termStyle(p.dim)),
                       TextSpan(text: 'log --mine', style: termStyle(p.cmd)),
                     ])),
+                    if (store.shop != null) PenPanel(store: store),
                     Text('내가 쓴 글 ${list.length}편', style: termStyle(p.hi, ko: true)),
                     Text('이 기기에서 쓴 글이에요. 앱을 지우면 목록도 사라져요.', style: termStyle(p.dim, size: 12, ko: true)),
                     const SizedBox(height: 8),

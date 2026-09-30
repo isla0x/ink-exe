@@ -20,4 +20,13 @@ abstract class InkApi {
   Future<Hall> hall();
 
   Future<List<Entry>> mine();
+
+  /// 내 펜네임 상태.
+  Future<PenStatus> myPen();
+
+  /// 펜네임 정하기 · 바꾸기.
+  Future<PenStatus> setPen(String name);
+
+  /// Apple 결제 영수증(JWS)을 서버에서 확인하고 펜네임 권한을 받는다. 구매 · 복원 둘 다.
+  Future<PenStatus> claimPen(String receipt);
 }

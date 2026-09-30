@@ -27,6 +27,7 @@ class Entry {
     required this.day,
     required this.slot,
     required this.nick,
+    this.pen = false,
     required this.author,
     required this.kind,
     required this.body,
@@ -46,8 +47,11 @@ class Entry {
   final DateTime day;
   final int slot;
 
-  /// 그날의 익명 이름 guest_0000
+  /// 그날의 익명 이름 guest_0000, 또는 글을 올릴 때의 펜네임
   final String nick;
+
+  /// [nick] 이 펜네임이면 true
+  final bool pen;
 
   /// 차단용 작성자 표시 (날이 바뀌어도 같다)
   final String author;
@@ -82,6 +86,7 @@ class Entry {
         day: day,
         slot: slot,
         nick: nick,
+        pen: pen,
         author: author,
         kind: kind,
         body: deleted == true ? null : (body ?? this.body),
@@ -102,6 +107,7 @@ class Entry {
         day: _day(j['day']),
         slot: (j['slot'] as num).toInt(),
         nick: (j['nick'] as String?) ?? '',
+        pen: (j['pen'] as bool?) ?? false,
         author: (j['author'] as String?) ?? '',
         kind: j['kind'] == 'quote' ? EntryKind.quote : EntryKind.original,
         body: j['body'] as String?,
@@ -229,6 +235,28 @@ class LikeResult {
   final bool liked;
 }
 
+/// 펜네임 (유료, 한 번 구매).
+class PenStatus {
+  const PenStatus({required this.owned, this.name, this.nextChange});
+
+  static const none = PenStatus(owned: false);
+
+  /// 샀는지
+  final bool owned;
+
+  /// 정한 이름. 샀지만 아직 안 정했으면 null.
+  final String? name;
+
+  /// 이 시각 전에는 바꿀 수 없다. null 이면 지금 바꿀 수 있다.
+  final DateTime? nextChange;
+
+  factory PenStatus.fromJson(Map<String, dynamic> j) => PenStatus(
+        owned: (j['owned'] as bool?) ?? false,
+        name: j['name'] as String?,
+        nextChange: j['next_change'] == null ? null : DateTime.parse(j['next_change'] as String).toLocal(),
+      );
+}
+
 /// 서버가 거절한 이유. 서버는 `ink:<코드>` 로 알려준다.
 class InkError implements Exception {
   const InkError(this.code, [this.detail]);
@@ -254,6 +282,13 @@ class InkError implements Exception {
         'own' => '내 글에는 할 수 없어요.',
         'not_found' => '글을 찾을 수 없어요.',
         'auth' => '서버에 접속하지 못했어요. 잠시 후 다시 시도해 주세요.',
+        'no_pen' => '펜네임을 먼저 구매해 주세요.',
+        'pen_len' => '펜네임은 2~12자로 정해 주세요.',
+        'pen_chars' => '한글 · 영문 · 숫자 · _ 만 쓸 수 있어요. (띄어쓰기 불가, 숫자는 6개까지)',
+        'pen_reserved' => 'guest · 운영자처럼 헷갈리는 이름은 쓸 수 없어요.',
+        'pen_taken' => '이미 누가 쓰고 있는 펜네임이에요.',
+        'pen_wait' => '펜네임은 7일에 한 번 바꿀 수 있어요.',
+        'pen_receipt' => '결제를 확인하지 못했어요. 잠시 후 [구매 복원]을 눌러 주세요.',
         _ => '서버에 연결하지 못했어요. 인터넷을 확인해 주세요.',
       };
 

@@ -63,7 +63,8 @@ class DemoInkApi implements InkApi {
       id: p.id,
       day: p.day,
       slot: p.slot,
-      nick: nickOf(p.user, p.day),
+      nick: p.pen ?? nickOf(p.user, p.day),
+      pen: p.pen != null,
       author: 'a${p.user.hashCode & 0xffffff}',
       kind: p.kind,
       body: masked ? null : p.body,
@@ -135,7 +136,7 @@ class DemoInkApi implements InkApi {
     if (today.any((p) => p.user == user)) throw const InkError('already');
     if (today.length >= cap) throw const InkError('full');
     final slot = today.length + 1;
-    _posts.add(_P(_nextId++, d, slot, user, kind, b, t, a, _clock()));
+    _posts.add(_P(_nextId++, d, slot, user, kind, b, t, a, _clock())..pen = _pens[user]?.name);
     return PostResult(slot, slot, cap);
   }
 
@@ -216,6 +217,67 @@ class DemoInkApi implements InkApi {
     return [for (final p in list) _entry(p, withTopic: true)];
   }
 
+  // ── 펜네임 (schema.sql 의 set_pen 과 같은 규칙) ──
+
+  final Map<String, _Pen> _pens = {};
+
+  /// 이 영수증 문자열이면 결제 확인에 실패한 것으로 친다 (테스트용).
+  static const badReceipt = 'bad';
+
+  PenStatus _penOf(String u) {
+    final r = _pens[u];
+    if (r == null) return PenStatus.none;
+    final next = r.changedAt?.add(const Duration(days: 7));
+    return PenStatus(owned: true, name: r.name, nextChange: next != null && next.isAfter(_clock()) ? next : null);
+  }
+
+  @override
+  Future<PenStatus> myPen() async => _penOf(user);
+
+  @override
+  Future<PenStatus> claimPen(String receipt) async {
+    if (receipt.isEmpty || receipt == badReceipt) throw const InkError('pen_receipt');
+    // 같은 영수증이 다른 사용자로 오면 옮긴다 (구매 복원).
+    String? owner;
+    for (final e in _pens.entries) {
+      if (e.value.receipt == receipt) owner = e.key;
+    }
+    if (owner != null && owner != user && !_pens.containsKey(user)) {
+      _pens[user] = _pens.remove(owner)!;
+    } else {
+      _pens.putIfAbsent(user, () => _Pen(receipt));
+    }
+    return _penOf(user);
+  }
+
+  @override
+  Future<PenStatus> setPen(String name) async {
+    final r = _pens[user];
+    if (r == null) throw const InkError('no_pen');
+    if (bannedUsers.contains(user)) throw const InkError('banned');
+    final n = name.trim();
+    if (n.runes.length < 2 || n.runes.length > 12) throw const InkError('pen_len');
+    if (!RegExp(r'^[가-힣A-Za-z0-9_]+$').hasMatch(n) || n.replaceAll(RegExp(r'[^0-9]'), '').length > 6) {
+      throw const InkError('pen_chars');
+    }
+    if (RegExp(r'^(guest|admin|ink)', caseSensitive: false).hasMatch(n) || RegExp('(운영|관리자|공식)').hasMatch(n)) {
+      throw const InkError('pen_reserved');
+    }
+    if (_banned.any(n.toLowerCase().contains)) throw const InkError('word');
+    if (r.name == n) return _penOf(user);
+    if (_penOf(user).nextChange != null) throw const InkError('pen_wait');
+    if (_pens.entries.any((e) => e.key != user && e.value.name?.toLowerCase() == n.toLowerCase())) {
+      throw const InkError('pen_taken');
+    }
+    r
+      ..name = n
+      ..changedAt = _clock();
+    return _penOf(user);
+  }
+
+  /// 테스트용: 다른 사람에게 펜네임을 준다.
+  void givePen(String who, String name) => _pens[who] = _Pen('gift-$who')..name = name;
+
   /// 테스트용: 다른 사람으로 글 쓰기.
   Future<PostResult> postAs(String who, String body, {EntryKind kind = EntryKind.original, String? title, String? author}) async {
     final prev = user;
@@ -287,6 +349,14 @@ class DemoInkApi implements InkApi {
 
 typedef _P = _Post;
 
+class _Pen {
+  _Pen(this.receipt);
+
+  final String receipt;
+  String? name;
+  DateTime? changedAt;
+}
+
 class _Post {
   _Post(this.id, this.day, this.slot, this.user, this.kind, this.body, this.title, this.author, this.created);
 
@@ -303,4 +373,5 @@ class _Post {
   final Set<String> reporters = {};
   bool hidden = false;
   bool deleted = false;
+  String? pen;
 }

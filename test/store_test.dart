@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ink_exe/data/demo_api.dart';
 import 'package:ink_exe/data/models.dart';
 import 'package:ink_exe/state/ink_store.dart';
+import 'package:ink_exe/state/pen_shop.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -153,5 +154,82 @@ void main() {
     expect(InkError.fromMessage('ink:full').code, 'full');
     expect(InkError.fromMessage('boom').code, 'network');
     expect(hms(3725), '01:02:05');
+  });
+
+  group('펜네임', () {
+    late DemoPenShop shop;
+
+    setUp(() async {
+      shop = DemoPenShop();
+      store = InkStore(api: api, shop: shop, clock: () => now, autoRefresh: false);
+      await store.init();
+      await store.initPen();
+    });
+
+    Future<void> flush() => Future<void>.delayed(Duration.zero);
+
+    test('사기 전: 이름은 못 정하고 guest 로 올라간다', () async {
+      expect(store.pen.owned, isFalse);
+      expect(store.penPrice, '₩2,200');
+      expect((await store.setPen('작은새'))!.code, 'no_pen');
+      await store.submit('그냥 글');
+      expect(store.board!.entries.single.nick, startsWith('guest_'));
+      expect(store.board!.entries.single.pen, isFalse);
+    });
+
+    test('사기 → 서버 확인 → 이름 정하기 → 글에 펜네임', () async {
+      await store.buyPen();
+      await flush();
+      await flush();
+      expect(store.pen.owned, isTrue);
+      expect(store.pen.name, isNull);
+      expect(store.penNotice!.$2, contains('펜네임을 정해'));
+      expect(shop.finished, 1, reason: '서버가 받아 준 뒤에만 결제를 마무리한다');
+
+      expect((await store.setPen('작은 새'))!.code, 'pen_chars');
+      expect((await store.setPen('guest_1'))!.code, 'pen_reserved');
+      api.givePen('other', '달빛');
+      expect((await store.setPen('달빛'))!.code, 'pen_taken');
+      expect(await store.setPen('작은새_7'), isNull);
+      expect(store.pen.name, '작은새_7');
+      expect(store.pen.nextChange, isNotNull);
+      expect((await store.setPen('큰새'))!.code, 'pen_wait');
+
+      await store.submit('펜네임 글');
+      final e = store.board!.entries.single;
+      expect(e.nick, '작은새_7');
+      expect(e.pen, isTrue);
+
+      now = now.add(const Duration(days: 7, seconds: 1));
+      expect(await store.setPen('큰새'), isNull);
+    });
+
+    test('서버가 영수증을 거절하면 결제를 마무리하지 않는다 (다음 실행 때 다시)', () async {
+      shop.receipt = DemoInkApi.badReceipt;
+      await store.buyPen();
+      await flush();
+      await flush();
+      expect(store.pen.owned, isFalse);
+      expect(store.penNotice!.$1, 'err');
+      expect(shop.finished, 0);
+    });
+
+    test('구매 복원: 새 기기(새 사용자)로 펜네임이 옮겨 온다', () async {
+      await store.buyPen();
+      await flush();
+      await flush();
+      await store.setPen('작은새');
+      api.user = 'new-phone';
+      final fresh = InkStore(api: api, shop: shop, clock: () => now, autoRefresh: false);
+      await fresh.init();
+      await fresh.initPen();
+      expect(fresh.pen.owned, isFalse);
+      await fresh.restorePen();
+      await flush();
+      await flush();
+      expect(fresh.pen.name, '작은새');
+      expect(fresh.penNotice!.$2, contains('복원'));
+      fresh.dispose();
+    });
   });
 }

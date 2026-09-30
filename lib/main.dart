@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +12,7 @@ import 'data/supabase_api.dart';
 import 'screens/board_screen.dart';
 import 'screens/rules_screen.dart';
 import 'state/ink_store.dart';
+import 'state/pen_shop.dart';
 import 'theme/term_palette.dart';
 
 Future<void> main() async {
@@ -18,18 +20,23 @@ Future<void> main() async {
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   InkApi api;
+  PenShop? shop;
   if (hasServer) {
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
     api = SupabaseInkApi(Supabase.instance.client);
+    // 펜네임 결제는 App Store 에서만 (서버가 Apple 영수증만 확인한다).
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) shop = IapPenShop();
   } else {
     // 서버 주소가 없으면 기기 안에서만 도는 데모.
     api = DemoInkApi(seed: true);
+    shop = DemoPenShop();
   }
 
-  final store = InkStore(api: api);
+  final store = InkStore(api: api, shop: shop);
   store.systemBrightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
   await store.loadPrefs();
   unawaited(store.start());
+  unawaited(store.initPen());
   runApp(InkExeApp(store: store));
 }
 

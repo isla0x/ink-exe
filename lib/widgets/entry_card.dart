@@ -67,7 +67,7 @@ class EntryCard extends StatelessWidget {
                   e.mine ? '${e.nick} (나)' : e.nick,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: termStyle(e.mine ? p.cmd : p.fg, size: 12),
+                  style: termStyle(e.mine ? p.cmd : (e.pen ? p.hi : p.fg), size: 12, ko: e.pen),
                 ),
               ),
               const SizedBox(width: 8),

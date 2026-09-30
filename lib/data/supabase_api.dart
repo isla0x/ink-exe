@@ -78,6 +78,27 @@ class SupabaseInkApi implements InkApi {
   Future<Hall> hall() => _call('get_hall', null, (r) => Hall.fromJson(_map(r)));
 
   @override
+  Future<PenStatus> myPen() => _call('my_pen', null, (r) => PenStatus.fromJson(_map(r)));
+
+  @override
+  Future<PenStatus> setPen(String name) => _call('set_pen', {'p_name': name}, (r) => PenStatus.fromJson(_map(r)));
+
+  /// supabase/functions/claim-pen 이 Apple 서명을 확인한다.
+  @override
+  Future<PenStatus> claimPen(String receipt) async {
+    try {
+      final res = await client.functions.invoke('claim-pen', body: {'jws': receipt});
+      return PenStatus.fromJson(_map(res.data));
+    } on FunctionException catch (e) {
+      final d = e.details;
+      final code = d is Map && d['error'] is String ? d['error'] as String : 'pen_receipt';
+      throw InkError(code == 'server' ? 'network' : code, '${e.status} ${e.details}');
+    } catch (e) {
+      throw InkError('network', '$e');
+    }
+  }
+
+  @override
   Future<List<Entry>> mine() => _call('my_posts', null, (r) => [
         for (final e in (r as List? ?? const [])) Entry.fromJson(_map(e)),
       ]);

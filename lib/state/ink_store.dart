@@ -7,13 +7,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/ink_api.dart';
 import '../data/models.dart';
 import '../theme/term_palette.dart';
+import 'pen_shop.dart';
 
 /// 앱 상태: 게시판을 불러오고, 글 · +1 · 신고 · 차단을 처리한다.
 class InkStore extends ChangeNotifier {
-  InkStore({required this.api, DateTime Function()? clock, this.autoRefresh = true})
+  InkStore({required this.api, this.shop, DateTime Function()? clock, this.autoRefresh = true})
       : _clock = clock ?? DateTime.now;
 
   final InkApi api;
+
+  /// 펜네임 결제 창구. null 이면 이 기기에서는 펜네임을 살 수 없다 (안드로이드 등).
+  final PenShop? shop;
   final DateTime Function() _clock;
 
   /// 테스트에서는 끈다 (타이머가 남으면 테스트가 끝나지 않는다).
@@ -233,8 +237,124 @@ class InkStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─────────────── 펜네임 ───────────────
+
+  PenStatus pen = PenStatus.none;
+
+  /// 결제 창구에 연결됐고 상품을 불러왔는지.
+  bool shopReady = false;
+
+  /// 결제 · 복원 · 확인 중
+  bool penBusy = false;
+
+  /// 펜네임 칸 아래 한 줄 (종류, 문장)
+  (String, String)? penNotice;
+
+  StreamSubscription<ShopEvent>? _shopSub;
+  Timer? _restoreTimer;
+
+  String? get penPrice => shop?.price;
+
+  /// 결제 창구에 연결하고 내 펜네임을 불러온다. 앱 시작 때 한 번.
+  Future<void> initPen() async {
+    final s = shop;
+    if (s == null) return;
+    _shopSub ??= s.events.listen(_onShop);
+    shopReady = await s.connect();
+    notifyListeners();
+    await loadPen();
+  }
+
+  Future<void> loadPen() async {
+    if (shop == null) return;
+    try {
+      await api.ensureSignedIn();
+      pen = await api.myPen();
+      notifyListeners();
+    } on InkError {
+      // 조용히 넘어간다. 화면을 열 때 다시 부른다.
+    }
+  }
+
+  void _penSay(String kind, String text, {bool busy = false}) {
+    penNotice = (kind, text);
+    penBusy = busy;
+    notifyListeners();
+  }
+
+  Future<void> buyPen() async {
+    final s = shop;
+    if (s == null || penBusy || pen.owned) return;
+    _penSay('info', '결제 창을 여는 중...', busy: true);
+    try {
+      await s.buy();
+    } catch (e) {
+      _penSay('err', '스토어에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    }
+  }
+
+  Future<void> restorePen() async {
+    final s = shop;
+    if (s == null || penBusy) return;
+    _penSay('info', '구매 내역을 확인하는 중...', busy: true);
+    try {
+      await s.restore();
+    } catch (e) {
+      _penSay('err', '스토어에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    // 복원할 내역이 없으면 아무 소식도 오지 않는다.
+    _restoreTimer?.cancel();
+    _restoreTimer = Timer(const Duration(seconds: 10), () {
+      if (penBusy && !pen.owned) _penSay('info', '복원할 구매 내역을 찾지 못했어요.');
+    });
+  }
+
+  Future<void> _onShop(ShopEvent e) async {
+    switch (e.status) {
+      case ShopStatus.pending:
+        _penSay('info', '결제 승인을 기다리는 중...', busy: true);
+      case ShopStatus.canceled:
+        _penSay('info', '결제를 취소했어요.');
+      case ShopStatus.error:
+        _penSay('err', '결제에 실패했어요. ${e.error ?? ''}'.trim());
+      case ShopStatus.done:
+        _restoreTimer?.cancel();
+        _penSay('info', '결제를 확인하는 중...', busy: true);
+        try {
+          await api.ensureSignedIn();
+          pen = await api.claimPen(e.receipt ?? '');
+          await shop?.finish(e);
+          _penSay(
+            'ok',
+            pen.name != null
+                ? (e.restored ? '구매를 복원했어요. 펜네임: ${pen.name}' : '펜네임: ${pen.name}')
+                : (e.restored ? '구매를 복원했어요. 펜네임을 정해 주세요.' : '결제 완료. 펜네임을 정해 주세요.'),
+          );
+        } on InkError catch (err) {
+          // 마무리하지 않았으니 앱을 다시 켜면 자동으로 다시 확인한다.
+          _penSay('err', err.message);
+        }
+    }
+  }
+
+  /// 펜네임 정하기 · 바꾸기. 성공하면 null.
+  Future<InkError?> setPen(String name) async {
+    try {
+      await api.ensureSignedIn();
+      pen = await api.setPen(name);
+      penNotice = ('ok', '펜네임을 ${pen.name}(으)로 정했어요. 오늘부터 올리는 글에 붙어요.');
+      notifyListeners();
+      return null;
+    } on InkError catch (e) {
+      return e;
+    }
+  }
+
   @override
   void dispose() {
+    _shopSub?.cancel();
+    _restoreTimer?.cancel();
     _refreshTimer?.cancel();
     _tickTimer?.cancel();
     brightness.dispose();
