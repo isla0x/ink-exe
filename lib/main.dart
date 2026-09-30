@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'config.dart';
 import 'data/demo_api.dart';
+import 'data/device_id.dart';
 import 'data/ink_api.dart';
 import 'data/supabase_api.dart';
 import 'screens/board_screen.dart';
@@ -24,7 +25,7 @@ Future<void> main() async {
   PenShop? shop;
   if (hasServer) {
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
-    api = SupabaseInkApi(Supabase.instance.client);
+    api = SupabaseInkApi(Supabase.instance.client, deviceId: DeviceId.get);
     // 펜네임 결제: App Store · Google Play (서버 claim-pen 이 두 곳의 서명을 확인한다).
     if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
       shop = IapPenShop();

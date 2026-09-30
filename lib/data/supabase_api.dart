@@ -8,9 +8,13 @@ import 'models.dart';
 
 /// Supabase RPC 로 서버와 이야기한다. 함수 목록은 supabase/schema.sql.
 class SupabaseInkApi implements InkApi {
-  SupabaseInkApi(this.client);
+  SupabaseInkApi(this.client, {this.deviceId});
 
   final SupabaseClient client;
+
+  /// 이 기기의 ID (lib/data/device_id.dart). 로그인 뒤 한 번 서버에 묶는다.
+  final Future<String?> Function()? deviceId;
+  bool _bound = false;
 
   Future<T> _call<T>(String fn, Map<String, dynamic>? params, T Function(dynamic) parse) async {
     try {
@@ -31,13 +35,29 @@ class SupabaseInkApi implements InkApi {
 
   @override
   Future<void> ensureSignedIn() async {
-    if (client.auth.currentSession != null) return;
+    if (client.auth.currentSession == null) {
+      try {
+        await client.auth.signInAnonymously();
+      } on AuthException catch (e) {
+        throw InkError('auth', e.message);
+      } catch (e) {
+        throw InkError('network', '$e');
+      }
+    }
+    await _bindDevice();
+  }
+
+  /// 앱을 다시 깔아 새 익명 사용자가 돼도 같은 기기로 알아보게 한다. 실패하면 다음에 다시.
+  Future<void> _bindDevice() async {
+    final get = deviceId;
+    if (_bound || get == null) return;
+    final id = await get();
+    if (id == null) return;
     try {
-      await client.auth.signInAnonymously();
-    } on AuthException catch (e) {
-      throw InkError('auth', e.message);
+      await client.rpc('bind_device', params: {'p_device': id});
+      _bound = true;
     } catch (e) {
-      throw InkError('network', '$e');
+      // 글쓰기 등에서 'ink:device' 로 알려진다.
     }
   }
 
