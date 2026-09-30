@@ -105,6 +105,18 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Supabase 가 함수에 자동으로 넣어 주는 서버 전용 키. 옛 방식(service_role)이 없으면 새 방식(secret) 키.
+function serviceKey(): string {
+  const legacy = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (legacy) return legacy;
+  try {
+    const keys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}') as Record<string, string>;
+    return keys.default ?? Object.values(keys)[0] ?? '';
+  } catch {
+    return '';
+  }
+}
+
 function reply(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 }
@@ -114,12 +126,12 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return reply(405, { error: 'method' });
 
   const url = Deno.env.get('SUPABASE_URL')!;
-  const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const admin = createClient(url, serviceKey(), { auth: { persistSession: false } });
 
-  const auth = req.headers.get('Authorization') ?? '';
-  const userClient = createClient(url, anon, { global: { headers: { Authorization: auth } } });
-  const { data: u, error: authError } = await userClient.auth.getUser(auth.replace(/^Bearer\s+/i, ''));
+  // 로그인 토큰 확인은 여기서 직접 한다 (대시보드의 'Verify JWT with legacy secret' 은 꺼 둔다:
+  // 이 프로젝트는 새 ES256 서명 키를 써서 legacy 검사로는 사용자 토큰이 통과하지 못한다).
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const { data: u, error: authError } = token ? await admin.auth.getUser(token) : { data: null, error: true };
   if (authError || !u?.user) return reply(401, { error: 'auth' });
 
   let jws: unknown;
@@ -139,7 +151,6 @@ Deno.serve(async (req) => {
     return reply(400, { error: 'pen_receipt', why });
   }
 
-  const admin = createClient(url, service, { auth: { persistSession: false } });
   const { data, error } = await admin.rpc('ink_grant_pen', { p_user: u.user.id, p_txn: txn, p_env: env });
   if (error) {
     console.error('ink_grant_pen failed:', error.message);
