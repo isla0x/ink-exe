@@ -3,13 +3,13 @@
 set client_min_messages = warning;
 
 create schema if not exists t;
-grant usage on schema t to anon, authenticated;
+grant usage on schema t to anon, authenticated, service_role;
 
 -- 이 사용자로 바꾼다 (Supabase 로그인 흉내).
 create or replace function t.u(n int) returns uuid language sql immutable as $$
   select ('00000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid
 $$;
-grant execute on function t.u(int) to anon, authenticated;
+grant execute on function t.u(int) to anon, authenticated, service_role;
 
 -- sql 을 실행했을 때 정확히 이 에러가 나야 한다.
 create or replace function t.expect(q text, code text) returns void language plpgsql as $$
@@ -221,6 +221,97 @@ begin
   h := public.get_hall();
   assert (h -> 'month' -> 0 ->> 'body') = '글 3', 'quotes excluded by setting';
 end $$;
+reset role;
+
+-- ── 12. 펜네임 ──
+set ink.fake_now = '2026-10-03 09:00:00+09';
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(50)::text, false);
+-- 앱은 결제 확인 함수를 직접 못 부른다 (공짜로 펜네임 얻기 방지).
+select t.expect($q$ select public.ink_grant_pen(t.u(50), 'txn-1', 'Sandbox') $q$, 'permission denied for function ink_grant_pen');
+select t.expect($q$ select * from public.ink_pens $q$, 'permission denied for table ink_pens');
+do $$ begin assert not (public.my_pen() ->> 'owned')::boolean; end $$;
+select t.expect($q$ select public.set_pen('작은새') $q$, 'ink:no_pen');
+reset role;
+
+set role service_role;
+do $$ declare r json;
+begin
+  r := public.ink_grant_pen(t.u(50), 'txn-1', 'Sandbox');
+  assert (r ->> 'owned')::boolean and r ->> 'name' is null;
+  r := public.ink_grant_pen(t.u(50), 'txn-1', 'Sandbox');  -- 같은 영수증 두 번: 그대로
+  assert (r ->> 'owned')::boolean;
+  r := public.ink_grant_pen(t.u(51), 'txn-2', 'Sandbox');
+end $$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(50)::text, false);
+select t.expect($q$ select public.set_pen('가') $q$, 'ink:pen_len');
+select t.expect($q$ select public.set_pen('열세글자가넘는아주긴이름이다') $q$, 'ink:pen_len');
+select t.expect($q$ select public.set_pen('작은 새') $q$, 'ink:pen_chars');
+select t.expect($q$ select public.set_pen('abc.com') $q$, 'ink:pen_chars');
+select t.expect($q$ select public.set_pen('01012345678') $q$, 'ink:pen_chars');
+select t.expect($q$ select public.set_pen('guest_0001') $q$, 'ink:pen_reserved');
+select t.expect($q$ select public.set_pen('Guest77') $q$, 'ink:pen_reserved');
+select t.expect($q$ select public.set_pen('ink운영자') $q$, 'ink:pen_reserved');
+select t.expect($q$ select public.set_pen('시발작가') $q$, 'ink:word');
+do $$ declare r json;
+begin
+  r := public.set_pen('  작은새_7 ');
+  assert r ->> 'name' = '작은새_7';
+  assert r ->> 'next_change' is not null, '바꾼 뒤 7일 대기';
+  r := public.set_pen('작은새_7');  -- 같은 이름은 그냥 통과
+  assert r ->> 'name' = '작은새_7';
+end $$;
+select t.expect($q$ select public.set_pen('다른이름') $q$, 'ink:pen_wait');
+
+-- 다른 사람은 같은 이름(대소문자 무시)을 못 쓴다.
+select set_config('request.jwt.claim.sub', t.u(51)::text, false);
+select t.expect($q$ select public.set_pen('작은새_7') $q$, 'ink:pen_taken');
+do $$ begin assert public.set_pen('Moon') ->> 'name' = 'Moon'; end $$;
+select set_config('request.jwt.claim.sub', t.u(50)::text, false);
+reset role;
+
+-- 펜네임으로 글을 쓰면 게시판 · 전당에 펜네임이 뜬다.
+set role authenticated;
+select public.post_entry('펜네임으로 쓴 글');
+do $$ declare b json; p json;
+begin
+  b := public.get_board();
+  select x into p from json_array_elements(b -> 'posts') x where x ->> 'body' = '펜네임으로 쓴 글';
+  assert p ->> 'nick' = '작은새_7';
+  assert (p ->> 'pen')::boolean;
+  select x into p from json_array_elements(b -> 'posts') x where x ->> 'body' <> '펜네임으로 쓴 글' limit 1;
+  assert p is null or not (p ->> 'pen')::boolean;
+end $$;
+reset role;
+
+-- 7일 뒤에는 바꿀 수 있고, 지난 글의 이름은 그대로.
+set ink.fake_now = '2026-10-10 09:00:01+09';
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(50)::text, false);
+do $$ declare b json;
+begin
+  assert public.set_pen('큰새') ->> 'name' = '큰새';
+  b := public.get_board('2026-10-03');
+  assert exists (select 1 from json_array_elements(b -> 'posts') x where x ->> 'nick' = '작은새_7');
+end $$;
+reset role;
+
+-- 구매 복원: 새 기기(새 사용자)로 같은 영수증이 오면 펜네임이 옮겨 간다.
+set role service_role;
+do $$ declare r json;
+begin
+  r := public.ink_grant_pen(t.u(60), 'txn-1', 'Sandbox');
+  assert r ->> 'name' = '큰새';
+end $$;
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(50)::text, false);
+do $$ begin assert not (public.my_pen() ->> 'owned')::boolean, '옛 기기는 펜네임을 잃는다'; end $$;
+select set_config('request.jwt.claim.sub', t.u(60)::text, false);
+do $$ begin assert public.my_pen() ->> 'name' = '큰새'; end $$;
 reset role;
 
 select 'all db tests passed' as result;

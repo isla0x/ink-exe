@@ -14,6 +14,12 @@
 --   · 글 가리기:                                   ink_posts.hidden = true
 --   · 사용자 쓰기 금지:                            ink_bans 에 user_id 추가
 --   · 금칙어:                                      ink_banned_words
+--   · 부적절한 펜네임 지우기:                       ink_pens.name = null (산 사람은 새 이름을 다시 정할 수 있다)
+--
+-- 펜네임 (유료, 한 번 구매)
+--   · 앱이 Apple 결제 영수증(JWS)을 supabase/functions/claim-pen 으로 보낸다.
+--   · 그 함수가 Apple 서명을 확인한 뒤 service_role 로 ink_grant_pen 을 부른다. 앱은 직접 못 부른다.
+--   · 구매 복원: 같은 Apple 거래 번호가 새 기기(새 익명 사용자)로 오면 펜네임이 그쪽으로 옮겨 간다.
 
 -- ─────────────────────────── 테이블 ───────────────────────────
 
@@ -81,12 +87,27 @@ create table if not exists public.ink_banned_words (
   word text primary key
 );
 
+-- 펜네임 구매 기록. txn = Apple originalTransactionId (구매 복원해도 같다).
+create table if not exists public.ink_pens (
+  txn text primary key,
+  user_id uuid not null unique,
+  name text,
+  name_changed_at timestamptz,
+  env text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists ink_pens_name_key on public.ink_pens (lower(name)) where name is not null;
+
+-- 글을 올린 순간의 펜네임. 나중에 이름을 바꿔도 지난 글은 그대로.
+alter table public.ink_posts add column if not exists pen text;
+
 -- 앱(anon · authenticated)은 테이블을 직접 못 건드린다. 함수로만.
 do $$
 declare t text;
 begin
   foreach t in array array['ink_settings','ink_topics','ink_topic_pool','ink_posts','ink_likes',
-                           'ink_reports','ink_bans','ink_banned_words'] loop
+                           'ink_reports','ink_bans','ink_banned_words','ink_pens'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on table public.%I from public, anon, authenticated', t);
   end loop;
@@ -165,7 +186,8 @@ language sql stable as $$
     'id', p.id,
     'day', p.day,
     'slot', p.slot,
-    'nick', public.ink_nick(p.user_id, p.day),
+    'nick', coalesce(p.pen, public.ink_nick(p.user_id, p.day)),
+    'pen', p.pen is not null,
     'author', public.ink_author(p.user_id),
     'kind', p.kind,
     'body', case when p.deleted then null
@@ -278,8 +300,8 @@ begin
   select count(*) into n from ink_posts where day = d;
   if n >= s.cap then raise exception 'ink:full'; end if;
 
-  insert into ink_posts (day, slot, user_id, kind, body, src_title, src_author, created_at)
-  values (d, n + 1, uid, k, b, t, a, ink_now())
+  insert into ink_posts (day, slot, user_id, kind, body, src_title, src_author, created_at, pen)
+  values (d, n + 1, uid, k, b, t, a, ink_now(), (select name from ink_pens where user_id = uid))
   returning id into new_id;
 
   return json_build_object('id', new_id, 'slot', n + 1, 'count', n + 1, 'cap', s.cap);
@@ -359,6 +381,89 @@ begin
     from ink_posts p where p.user_id = uid), '[]'::json);
 end $$;
 
+-- ─────────────────────────── 펜네임 ───────────────────────────
+
+-- 펜네임을 바꿀 수 있는 다음 시각 (처음 정할 때는 바로).
+create or replace function public.ink_pen_next(r public.ink_pens) returns timestamptz
+language sql stable as $$
+  select case when r.name is null or r.name_changed_at is null then null
+              when r.name_changed_at + interval '7 days' <= public.ink_now() then null
+              else r.name_changed_at + interval '7 days' end
+$$;
+
+create or replace function public.ink_pen_json(r public.ink_pens) returns json
+language sql stable as $$
+  select json_build_object('owned', r.txn is not null, 'name', r.name, 'next_change', public.ink_pen_next(r))
+$$;
+
+-- Apple 서명을 확인한 서버 함수(claim-pen)만 부른다. 구매 · 복원 둘 다 이것.
+create or replace function public.ink_grant_pen(p_user uuid, p_txn text, p_env text default null) returns json
+language plpgsql volatile security definer set search_path = public as $$
+declare r ink_pens;
+begin
+  if p_user is null or nullif(btrim(coalesce(p_txn, '')), '') is null then raise exception 'ink:pen_receipt'; end if;
+  perform pg_advisory_xact_lock(hashtext('ink-pen:' || p_txn));
+  select * into r from ink_pens where txn = p_txn for update;
+  if found then
+    if r.user_id <> p_user then
+      -- 복원: 이 사용자가 다른 구매로 이미 가진 게 있으면 그걸 그대로 쓴다.
+      if exists (select 1 from ink_pens where user_id = p_user) then
+        select * into r from ink_pens where user_id = p_user;
+        return ink_pen_json(r);
+      end if;
+      update ink_pens set user_id = p_user, updated_at = now() where txn = p_txn returning * into r;
+    end if;
+    return ink_pen_json(r);
+  end if;
+  if exists (select 1 from ink_pens where user_id = p_user) then
+    select * into r from ink_pens where user_id = p_user;
+    return ink_pen_json(r);
+  end if;
+  insert into ink_pens (txn, user_id, env) values (p_txn, p_user, p_env) returning * into r;
+  return ink_pen_json(r);
+end $$;
+
+-- 내 펜네임 상태: {owned, name, next_change}
+create or replace function public.my_pen() returns json
+language plpgsql stable security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
+  r ink_pens;
+begin
+  select * into r from ink_pens where user_id = uid;
+  if not found then return json_build_object('owned', false, 'name', null, 'next_change', null); end if;
+  return ink_pen_json(r);
+end $$;
+
+-- 펜네임 정하기 · 바꾸기. 'ink:<코드>' 예외:
+--   no_pen · banned · pen_len (2~12자) · pen_chars (한글 · 영문 · 숫자 · _ 만, 숫자 6개까지)
+--   pen_reserved (guest · 운영자 같은 이름) · word · pen_taken · pen_wait (7일에 한 번)
+create or replace function public.set_pen(p_name text) returns json
+language plpgsql volatile security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
+  r ink_pens;
+  n text := btrim(coalesce(p_name, ''));
+begin
+  if uid is null then raise exception 'ink:auth'; end if;
+  select * into r from ink_pens where user_id = uid for update;
+  if not found then raise exception 'ink:no_pen'; end if;
+  if exists (select 1 from ink_bans where user_id = uid) then raise exception 'ink:banned'; end if;
+  if char_length(n) < 2 or char_length(n) > 12 then raise exception 'ink:pen_len'; end if;
+  if n !~ '^[가-힣A-Za-z0-9_]+$' or char_length(regexp_replace(n, '[^0-9]', '', 'g')) > 6 then
+    raise exception 'ink:pen_chars';
+  end if;
+  if lower(n) ~ '^(guest|admin|ink)' or n ~ '(운영|관리자|공식)' then raise exception 'ink:pen_reserved'; end if;
+  if exists (select 1 from ink_banned_words w where position(lower(w.word) in lower(n)) > 0) then
+    raise exception 'ink:word';
+  end if;
+  if r.name = n then return ink_pen_json(r); end if;
+  if ink_pen_next(r) is not null then raise exception 'ink:pen_wait'; end if;
+  if exists (select 1 from ink_pens where lower(name) = lower(n) and txn <> r.txn) then raise exception 'ink:pen_taken'; end if;
+  update ink_pens set name = n, name_changed_at = ink_now(), updated_at = now() where txn = r.txn returning * into r;
+  return ink_pen_json(r);
+end $$;
+
 -- 명예의 전당.
 --   month:     이번 달 (한국 시간) 어제까지 날마다 1위
 --   today:     오늘 지금 1위 (아직 확정 아님)
@@ -404,11 +509,16 @@ revoke execute on function
   public.ink_hall_eligible(public.ink_posts),
   public.get_board(date), public.board_status(), public.post_entry(text, text, text, text),
   public.toggle_like(bigint), public.report_post(bigint, text), public.delete_my_post(bigint),
-  public.my_posts(), public.get_hall(int)
+  public.my_posts(), public.get_hall(int),
+  public.ink_pen_next(public.ink_pens), public.ink_pen_json(public.ink_pens),
+  public.ink_grant_pen(uuid, text, text), public.my_pen(), public.set_pen(text)
 from public, anon, authenticated;
 
 grant execute on function public.get_board(date), public.board_status(), public.get_hall(int)
   to anon, authenticated;
 grant execute on function public.post_entry(text, text, text, text), public.toggle_like(bigint),
-  public.report_post(bigint, text), public.delete_my_post(bigint), public.my_posts()
+  public.report_post(bigint, text), public.delete_my_post(bigint), public.my_posts(),
+  public.my_pen(), public.set_pen(text)
   to authenticated;
+-- 결제 확인은 서버 함수(service_role)만.
+grant execute on function public.ink_grant_pen(uuid, text, text) to service_role;

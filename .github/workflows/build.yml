@@ -79,6 +79,18 @@ jobs:
       - name: Schema + tests
         run: bash supabase/test/run.sh
 
+  # 펜네임 결제 확인 서버 함수 (가짜 Apple 인증서 체인으로 검사)
+  edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: claim-pen tests
+        run: deno test --allow-net --allow-env --allow-read supabase/functions/claim-pen/test.ts
+
   # 진짜 iOS 빌드 (서명 없이). Xcode 프로젝트 · 위젯 타깃 · 플러그인이 함께 컴파일되는지 확인한다.
   ios-build:
     runs-on: macos-latest
