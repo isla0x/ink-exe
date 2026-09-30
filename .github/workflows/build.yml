@@ -48,6 +48,20 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
+      - name: Google Play 요건 (targetSdk 36 이상)
+        run: |
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)
+          T=$("$AAPT" dump badging build/app/outputs/flutter-apk/app-release.apk | sed -n "s/^targetSdkVersion:'\([0-9]*\)'.*/\1/p")
+          echo "targetSdk=$T"
+          if [ "${T:-0}" -lt 36 ]; then echo "::error::targetSdk $T < 36 (Google Play 요건)"; exit 1; fi
+
+      - name: Play 업로드 번들 (테스트 키로 서명되는지 확인)
+        run: |
+          printf 'ci-test-pw\nci-test-pw\n' | bash tool/setup_android_signing.sh
+          flutter build appbundle --release
+          keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab | tee /tmp/cert.txt
+          grep -q "CN=isla0x" /tmp/cert.txt || { echo "::error::번들이 업로드 키로 서명되지 않았어요"; exit 1; }
+
       # APK 가 먼저 나오도록 린트는 마지막에 돌린다.
       - name: Analyze
         run: |
