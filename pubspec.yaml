@@ -1,0 +1,42 @@
+name: ink_exe
+description: "ink.exe — 매일 글감 하나, 선착순 20명이 쓰는 익명 짧은 글 게시판"
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.3.0
+  supabase_flutter: ^2.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# 앱 아이콘: `dart run flutter_launcher_icons` 로 iOS / Android 아이콘을 다시 만든다.
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+  ios: true
+  remove_alpha_ios: true
+  android: "ic_launcher"
+  adaptive_icon_background: "#0C0C0C"
+  adaptive_icon_foreground: "assets/icon/icon-foreground.png"
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
+    - family: NanumGothicCoding
+      fonts:
+        - asset: assets/fonts/NanumGothicCoding-Regular.ttf
+        - asset: assets/fonts/NanumGothicCoding-Bold.ttf
+          weight: 700

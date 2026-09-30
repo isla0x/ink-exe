@@ -1,0 +1,95 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Prepare platform folders
+        run: bash tool/setup_platforms.sh
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: App icons
+        run: dart run flutter_launcher_icons
+
+      - name: Test
+        run: flutter test --reporter github
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ink-exe-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      # APK 가 먼저 나오도록 린트는 마지막에 돌린다.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+  # 서버(Supabase) SQL: 빈 Postgres 에 스키마를 올리고 규칙 테스트를 돌린다.
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v5
+      - name: Schema + tests
+        run: bash supabase/test/run.sh
+
+  # 진짜 iOS 빌드 (서명 없이). Xcode 프로젝트 · 위젯 타깃 · 플러그인이 함께 컴파일되는지 확인한다.
+  ios-build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: App icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
