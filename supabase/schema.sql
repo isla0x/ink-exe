@@ -317,7 +317,7 @@ declare
   dev text := ink_device_of(uid);
 begin
   if uid is null then raise exception 'ink:auth'; end if;
-  if dev is null then raise exception 'ink:device'; end if;
+  -- dev 가 없으면(기기를 안 묶는 옛 앱) 사용자 단위로만 센다.
   if exists (select 1 from ink_bans where user_id = uid or device = dev) then raise exception 'ink:banned'; end if;
   select * into s from ink_settings where id = 1;
 
@@ -370,7 +370,7 @@ declare
   now_liked boolean;
 begin
   if uid is null then raise exception 'ink:auth'; end if;
-  if dev is null then raise exception 'ink:device'; end if;
+  -- dev 가 없으면(기기를 안 묶는 옛 앱) 사용자 단위로만 센다.
   select * into p from ink_posts where id = p_id for update;
   if not found or p.deleted or p.hidden then raise exception 'ink:not_found'; end if;
   if p.user_id = uid or p.device = dev then raise exception 'ink:own'; end if;
@@ -397,7 +397,7 @@ declare
   r text := left(coalesce(nullif(btrim(p_reason), ''), 'etc'), 40);
 begin
   if uid is null then raise exception 'ink:auth'; end if;
-  if dev is null then raise exception 'ink:device'; end if;
+  -- dev 가 없으면(기기를 안 묶는 옛 앱) 사용자 단위로만 센다.
   select * into p from ink_posts where id = p_id for update;
   if not found then raise exception 'ink:not_found'; end if;
   if p.user_id = uid or p.device = dev then raise exception 'ink:own'; end if;

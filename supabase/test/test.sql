@@ -350,9 +350,31 @@ reset role;
 reset role;
 set ink.fake_now = '2026-10-20 10:00:00+09';
 set role authenticated;
+-- 기기를 안 묶는 옛 앱(1.0.0+7 이하)도 계속 쓸 수 있다: 사용자 단위로만 센다.
+reset role;
+set ink.fake_now = '2026-10-21 10:00:00+09';
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(209)::text, false);
+select public.post_entry('옛 앱: 기기 없이 쓰기');
+select t.expect($q$ select public.post_entry('옛 앱: 두 번째') $q$, 'ink:already');
+reset role;
+select set_config('t.pid', (select id::text from public.ink_posts where body = '옛 앱: 기기 없이 쓰기' and device is null), false);
+set role authenticated;
+do $$ declare pid bigint := current_setting('t.pid')::bigint;
+begin
+  assert pid is not null;
+  perform set_config('request.jwt.claim.sub', t.u(208)::text, false);
+  assert (public.toggle_like(pid) ->> 'liked')::boolean, '옛 앱 +1';
+  assert not (public.toggle_like(pid) ->> 'liked')::boolean, '옛 앱 +1 취소';
+  perform public.report_post(pid, 'spam');
+end $$;
+reset role;
+do $$ begin
+  assert (select reports from public.ink_posts where id = current_setting('t.pid')::bigint) = 1, '옛 앱 신고는 사람당 한 번';
+end $$;
+set ink.fake_now = '2026-10-20 10:00:00+09';
+set role authenticated;
 select set_config('request.jwt.claim.sub', t.u(201)::text, false);
-select t.expect($q$ select public.post_entry('기기 없음') $q$, 'ink:device');
-select t.expect($q$ select public.toggle_like(1) $q$, 'ink:device');
 select t.expect($q$ select public.bind_device('short') $q$, 'ink:device');
 select public.bind_device('phone-AAAA-1111');
 select public.bind_device('phone-CCCC-3333');  -- 한 번 묶이면 안 바뀐다
