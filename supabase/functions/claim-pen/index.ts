@@ -13,7 +13,7 @@ import * as x509 from 'npm:@peculiar/x509@1.14.3';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const BUNDLE_ID = 'com.isla0x.inkExe';
-const PRODUCT_ID = 'com.isla0x.inkExe.pen';
+const PRODUCT_ID = 'ink_exe_pen'; // lib/state/pen_shop.dart 의 PenShop.productId 와 같게
 
 x509.cryptoProvider.set(crypto);
 

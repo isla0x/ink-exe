@@ -48,10 +48,10 @@ async function sign(c: Awaited<ReturnType<typeof chain>>, payload: unknown, key 
 }
 
 const tx = {
-  bundleId: 'com.isla0x.inkExe', productId: 'com.isla0x.inkExe.pen', originalTransactionId: '2000000123',
+  bundleId: 'com.isla0x.inkExe', productId: 'ink_exe_pen', originalTransactionId: '2000000123',
   transactionId: '2000000456', environment: 'Sandbox', type: 'Non-Consumable',
 };
-const want = { bundleId: 'com.isla0x.inkExe', productId: 'com.isla0x.inkExe.pen' };
+const want = { bundleId: 'com.isla0x.inkExe', productId: 'ink_exe_pen' };
 
 async function rejects(p: Promise<unknown>, why: string) {
   try {
@@ -120,7 +120,7 @@ Deno.test('다른 앱 · 다른 상품 · 환불된 구매는 거절', () => {
     throw new Error(`expected ${why}`);
   };
   bad({ ...tx, bundleId: 'com.other.app' }, 'bundle');
-  bad({ ...tx, productId: 'com.isla0x.inkExe.tip' }, 'product');
+  bad({ ...tx, productId: 'diary_exe_pro' }, 'product');
   bad({ ...tx, revocationDate: 1760000000000 }, 'revoked');
   bad({ ...tx, originalTransactionId: '' }, 'txn');
 });
