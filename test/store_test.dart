@@ -69,6 +69,7 @@ void main() {
     final id = api.idOfSlot(1);
     await api.reportAs('a', id);
     await api.reportAs('b', id);
+    await store.refresh();
     await store.report(store.board!.entries.first, 'abuse');
     expect(store.board!.entries.first.hidden, isTrue);
     expect(store.board!.entries.first.body, isNull);
