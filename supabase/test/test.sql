@@ -25,6 +25,10 @@ begin
 end $$;
 grant execute on function t.expect(text, text) to anon, authenticated;
 
+-- 테스트 사용자 1~99 는 각자 다른 기기 (앱이 로그인 직후 bind_device 를 부른 상태).
+insert into public.ink_devices (user_id, device)
+select t.u(i), 'test-device-' || i from generate_series(1, 99) i on conflict do nothing;
+
 -- 2026-10-01 (목) 00:00:05 KST 에 게시판이 열린다.
 set ink.fake_now = '2026-10-01 00:00:05+09';
 
@@ -341,5 +345,75 @@ begin
   assert (st ->> 'count')::int = 1;
 end $$;
 reset role;
+
+-- ── 14. 기기 단위: 앱을 다시 깔아도 같은 기기 ──
+reset role;
+set ink.fake_now = '2026-10-20 10:00:00+09';
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(201)::text, false);
+select t.expect($q$ select public.post_entry('기기 없음') $q$, 'ink:device');
+select t.expect($q$ select public.toggle_like(1) $q$, 'ink:device');
+select t.expect($q$ select public.bind_device('short') $q$, 'ink:device');
+select public.bind_device('phone-AAAA-1111');
+select public.bind_device('phone-CCCC-3333');  -- 한 번 묶이면 안 바뀐다
+select public.post_entry('첫 설치에서 쓴 글');
+-- 같은 폰에서 앱을 지웠다 깔았다 = 새 익명 사용자, 같은 기기
+select set_config('request.jwt.claim.sub', t.u(202)::text, false);
+select public.bind_device('phone-AAAA-1111');
+select t.expect($q$ select public.post_entry('다시 깔고 또 쓰기') $q$, 'ink:already');
+do $$ declare b json; pid bigint;
+begin
+  b := public.get_board();
+  select (x ->> 'id')::bigint into pid from json_array_elements(b -> 'posts') x where x ->> 'body' = '첫 설치에서 쓴 글';
+  assert pid is not null;
+  assert (b ->> 'mine_slot') is not null, '다시 깔아도 내 자리';
+  assert (select (x ->> 'mine')::boolean from json_array_elements(b -> 'posts') x where (x ->> 'id')::bigint = pid), '다시 깔아도 내 글';
+  assert json_array_length(public.my_posts()) = 1, '내 글 모아보기도 이어진다';
+  begin perform public.report_post(pid, 'abuse'); raise exception 'no'; exception when others then assert sqlerrm = 'ink:own', sqlerrm; end;
+  begin perform public.toggle_like(pid); raise exception 'no'; exception when others then assert sqlerrm = 'ink:own', sqlerrm; end;
+end $$;
+-- 다른 폰 한 대가 세 번 다시 깔며 신고 · +1 해도 한 번으로 센다
+do $$ declare pid bigint; r json;
+begin
+  perform set_config('request.jwt.claim.sub', t.u(203)::text, false);
+  select (x ->> 'id')::bigint into pid from json_array_elements(public.get_board() -> 'posts') x where x ->> 'body' = '첫 설치에서 쓴 글';
+  for i in 203..205 loop
+    perform set_config('request.jwt.claim.sub', t.u(i)::text, false);
+    perform public.bind_device('phone-BBBB-2222');
+    r := public.report_post(pid, 'abuse');
+    assert not (r ->> 'hidden')::boolean, '같은 기기 신고는 한 번';
+  end loop;
+  perform set_config('request.jwt.claim.sub', t.u(203)::text, false);
+  r := public.toggle_like(pid);
+  assert (r ->> 'likes')::int = 1 and (r ->> 'liked')::boolean;
+  perform set_config('request.jwt.claim.sub', t.u(204)::text, false);
+  assert (select (x ->> 'liked')::boolean from json_array_elements(public.get_board() -> 'posts') x where (x ->> 'id')::bigint = pid),
+    '다시 깔아도 +1 누른 상태';
+  r := public.toggle_like(pid);  -- 같은 기기라 취소가 된다 (+2 가 아니라)
+  assert (r ->> 'likes')::int = 0 and not (r ->> 'liked')::boolean;
+  -- 서로 다른 기기 3대면 가려진다
+  for i in 206..207 loop
+    perform set_config('request.jwt.claim.sub', t.u(i)::text, false);
+    perform public.bind_device('phone-other-' || i);
+    r := public.report_post(pid, 'abuse');
+  end loop;
+  assert (r ->> 'hidden')::boolean, '기기 3대 신고 → 가려짐';
+end $$;
+reset role;
+-- 쓰기 금지된 기기는 다시 깔아도 못 쓴다
+insert into public.ink_bans (user_id, reason, device)
+values (t.u(208), 'test', (select device from public.ink_devices where user_id = t.u(203)));
+set ink.fake_now = '2026-10-21 10:00:00+09';
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(209)::text, false);
+select public.bind_device('phone-BBBB-2222');
+select t.expect($q$ select public.post_entry('다시 깔고 쓰기') $q$, 'ink:banned');
+do $$ begin assert (public.get_board() ->> 'banned')::boolean; end $$;
+reset role;
+-- 원래 기기 ID 는 저장하지 않는다 (해시만)
+do $$ begin
+  assert not exists (select 1 from public.ink_devices where device like '%phone-%'), 'raw device id stored';
+  assert (select char_length(device) from public.ink_devices where user_id = t.u(201)) = 64;
+end $$;
 
 select 'all db tests passed' as result;

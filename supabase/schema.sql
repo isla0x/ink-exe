@@ -12,7 +12,7 @@
 --   · 선착순 인원 · 글자 수 · 신고 몇 번에 가릴지:  ink_settings
 --   · 특정 날짜 글감 지정:                         ink_topics (day, word)
 --   · 글 가리기:                                   ink_posts.hidden = true
---   · 사용자 쓰기 금지:                            ink_bans 에 user_id 추가
+--   · 사용자 쓰기 금지:                            ink_bans 에 user_id 추가 (그 기기까지 막으려면 device 도)
 --   · 금칙어:                                      ink_banned_words
 --   · 부적절한 펜네임 지우기:                       ink_pens.name = null (산 사람은 새 이름을 다시 정할 수 있다)
 --
@@ -87,6 +87,21 @@ create table if not exists public.ink_banned_words (
   word text primary key
 );
 
+-- 기기 묶기: 익명 사용자 하나에 기기 하나 (앱을 지웠다 깔아도 같은 기기).
+-- 앱이 보낸 기기 ID(iOS 키체인 UUID · Android ANDROID_ID)는 해시로만 저장한다.
+-- 하루 한 편 · +1 · 신고 · 쓰기 금지를 기기 단위로 세서, 다시 깔아서 여러 번 쓰는 걸 막는다.
+create table if not exists public.ink_devices (
+  user_id uuid primary key,
+  device text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists ink_devices_device on public.ink_devices (device);
+alter table public.ink_posts add column if not exists device text;
+alter table public.ink_likes add column if not exists device text;
+alter table public.ink_reports add column if not exists device text;
+alter table public.ink_bans add column if not exists device text;
+create index if not exists ink_posts_day_device on public.ink_posts (day, device);
+
 -- 펜네임 구매 기록. txn = Apple originalTransactionId (구매 복원해도 같다).
 create table if not exists public.ink_pens (
   txn text primary key,
@@ -107,7 +122,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['ink_settings','ink_topics','ink_topic_pool','ink_posts','ink_likes',
-                           'ink_reports','ink_bans','ink_banned_words','ink_pens'] loop
+                           'ink_reports','ink_bans','ink_banned_words','ink_pens','ink_devices'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on table public.%I from public, anon, authenticated', t);
   end loop;
@@ -180,28 +195,34 @@ language sql stable as $$
   select greatest(0, extract(epoch from (((public.ink_today() + 1)::timestamp at time zone 'Asia/Seoul') - public.ink_now()))::int)
 $$;
 
+create or replace function public.ink_device_of(uid uuid) returns text
+language sql stable as $$
+  select device from public.ink_devices where user_id = uid
+$$;
+
 create or replace function public.ink_post_json(p public.ink_posts, uid uuid) returns json
 language sql stable as $$
+  with me as (select uid as u, public.ink_device_of(uid) as d),
+  x as (select me.u, me.d, coalesce(p.user_id = me.u or (me.d is not null and p.device = me.d), false) as mine from me)
   select json_build_object(
     'id', p.id,
     'day', p.day,
     'slot', p.slot,
     'nick', coalesce(p.pen, public.ink_nick(p.user_id, p.day)),
     'pen', p.pen is not null,
-    'author', public.ink_author(p.user_id),
+    'author', substr(md5('ink-author:' || coalesce(p.device, p.user_id::text)), 1, 12),
     'kind', p.kind,
-    'body', case when p.deleted then null
-                 when p.hidden and p.user_id is distinct from uid then null
-                 else p.body end,
-    'src_title', case when p.deleted or (p.hidden and p.user_id is distinct from uid) then null else p.src_title end,
-    'src_author', case when p.deleted or (p.hidden and p.user_id is distinct from uid) then null else p.src_author end,
+    'body', case when p.deleted then null when p.hidden and not x.mine then null else p.body end,
+    'src_title', case when p.deleted or (p.hidden and not x.mine) then null else p.src_title end,
+    'src_author', case when p.deleted or (p.hidden and not x.mine) then null else p.src_author end,
     'likes', p.likes,
-    'liked', coalesce(uid is not null and exists (select 1 from public.ink_likes l where l.post_id = p.id and l.user_id = uid), false),
-    'mine', coalesce(p.user_id = uid, false),
+    'liked', coalesce(x.u is not null and exists (
+      select 1 from public.ink_likes l where l.post_id = p.id and (l.user_id = x.u or (x.d is not null and l.device = x.d))), false),
+    'mine', x.mine,
     'hidden', p.hidden,
     'deleted', p.deleted,
     'time', to_char(p.created_at at time zone 'Asia/Seoul', 'HH24:MI')
-  )
+  ) from x
 $$;
 
 -- 명예의 전당 후보: 가려지거나 지워지지 않았고 +1 이 하나 이상. (hall_includes_quotes = false 면 인용글 제외)
@@ -230,11 +251,28 @@ begin
     'cap', s.cap,
     'max_len', s.max_len,
     'count', (select count(*) from ink_posts where day = d),
-    'mine_slot', (select slot from ink_posts where day = d and user_id = uid),
-    'banned', uid is not null and exists (select 1 from ink_bans where user_id = uid),
+    'mine_slot', (select slot from ink_posts where day = d
+                   and (user_id = uid or (ink_device_of(uid) is not null and device = ink_device_of(uid))) limit 1),
+    'banned', uid is not null and exists (select 1 from ink_bans
+                   where user_id = uid or (device is not null and device = ink_device_of(uid))),
     'seconds_left', ink_seconds_left(),
     'posts', coalesce((select json_agg(ink_post_json(p, uid) order by p.slot) from ink_posts p where p.day = d), '[]'::json)
   );
+end $$;
+
+-- 기기 묶기. 앱이 로그인 직후 부른다. 한 번 묶이면 바뀌지 않는다.
+create or replace function public.bind_device(p_device text) returns json
+language plpgsql volatile security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
+  raw text := btrim(coalesce(p_device, ''));
+begin
+  if uid is null then raise exception 'ink:auth'; end if;
+  if char_length(raw) < 8 or char_length(raw) > 200 then raise exception 'ink:device'; end if;
+  insert into ink_devices (user_id, device)
+  values (uid, encode(sha256(convert_to('ink-device:' || raw, 'UTF8')), 'hex'))
+  on conflict (user_id) do nothing;
+  return json_build_object('ok', true);
 end $$;
 
 -- 위젯 · 공유용 요약 (로그인 없이도 부를 수 있다). top = 오늘 지금 1위 (+1 이 하나 이상인 글).
@@ -276,9 +314,11 @@ declare
   a text := nullif(btrim(coalesce(p_author, '')), '');
   n int;
   new_id bigint;
+  dev text := ink_device_of(uid);
 begin
   if uid is null then raise exception 'ink:auth'; end if;
-  if exists (select 1 from ink_bans where user_id = uid) then raise exception 'ink:banned'; end if;
+  if dev is null then raise exception 'ink:device'; end if;
+  if exists (select 1 from ink_bans where user_id = uid or device = dev) then raise exception 'ink:banned'; end if;
   select * into s from ink_settings where id = 1;
 
   b := regexp_replace(coalesce(p_body, ''), E'\r\n?', E'\n', 'g');
@@ -308,12 +348,13 @@ begin
 
   -- 같은 날 동시에 들어온 요청은 한 줄로 세운다 (선착순).
   perform pg_advisory_xact_lock(hashtext('ink:' || d::text));
-  if exists (select 1 from ink_posts where day = d and user_id = uid) then raise exception 'ink:already'; end if;
+  -- 하루 한 편: 같은 기기면 앱을 다시 깔아 새 사용자가 돼도 한 편.
+  if exists (select 1 from ink_posts where day = d and (user_id = uid or device = dev)) then raise exception 'ink:already'; end if;
   select count(*) into n from ink_posts where day = d;
   if n >= s.cap then raise exception 'ink:full'; end if;
 
-  insert into ink_posts (day, slot, user_id, kind, body, src_title, src_author, created_at, pen)
-  values (d, n + 1, uid, k, b, t, a, ink_now(), (select name from ink_pens where user_id = uid))
+  insert into ink_posts (day, slot, user_id, kind, body, src_title, src_author, created_at, pen, device)
+  values (d, n + 1, uid, k, b, t, a, ink_now(), (select name from ink_pens where user_id = uid), dev)
   returning id into new_id;
 
   return json_build_object('id', new_id, 'slot', n + 1, 'count', n + 1, 'cap', s.cap);
@@ -324,18 +365,21 @@ create or replace function public.toggle_like(p_id bigint) returns json
 language plpgsql volatile security definer set search_path = public as $$
 declare
   uid uuid := auth.uid();
+  dev text := ink_device_of(uid);
   p ink_posts;
   now_liked boolean;
 begin
   if uid is null then raise exception 'ink:auth'; end if;
+  if dev is null then raise exception 'ink:device'; end if;
   select * into p from ink_posts where id = p_id for update;
   if not found or p.deleted or p.hidden then raise exception 'ink:not_found'; end if;
-  if p.user_id = uid then raise exception 'ink:own'; end if;
-  if exists (select 1 from ink_likes where post_id = p_id and user_id = uid) then
-    delete from ink_likes where post_id = p_id and user_id = uid;
+  if p.user_id = uid or p.device = dev then raise exception 'ink:own'; end if;
+  -- 한 기기에 +1 하나 (다시 깔아도 같은 기기면 같은 +1)
+  if exists (select 1 from ink_likes where post_id = p_id and (user_id = uid or device = dev)) then
+    delete from ink_likes where post_id = p_id and (user_id = uid or device = dev);
     now_liked := false;
   else
-    insert into ink_likes (post_id, user_id) values (p_id, uid);
+    insert into ink_likes (post_id, user_id, device) values (p_id, uid, dev);
     now_liked := true;
   end if;
   update ink_posts set likes = (select count(*) from ink_likes where post_id = p_id) where id = p_id
@@ -348,14 +392,19 @@ create or replace function public.report_post(p_id bigint, p_reason text) return
 language plpgsql volatile security definer set search_path = public as $$
 declare
   uid uuid := auth.uid();
+  dev text := ink_device_of(uid);
   p ink_posts;
   r text := left(coalesce(nullif(btrim(p_reason), ''), 'etc'), 40);
 begin
   if uid is null then raise exception 'ink:auth'; end if;
+  if dev is null then raise exception 'ink:device'; end if;
   select * into p from ink_posts where id = p_id for update;
   if not found then raise exception 'ink:not_found'; end if;
-  if p.user_id = uid then raise exception 'ink:own'; end if;
-  insert into ink_reports (post_id, user_id, reason) values (p_id, uid, r) on conflict do nothing;
+  if p.user_id = uid or p.device = dev then raise exception 'ink:own'; end if;
+  -- 한 기기에 신고 하나. 다시 깔아서 여러 번 신고해도 한 번으로 센다.
+  if not exists (select 1 from ink_reports where post_id = p_id and (user_id = uid or device = dev)) then
+    insert into ink_reports (post_id, user_id, reason, device) values (p_id, uid, r, dev) on conflict do nothing;
+  end if;
   update ink_posts
      set reports = (select count(*) from ink_reports where post_id = p_id),
          hidden = hidden or (select count(*) from ink_reports where post_id = p_id)
@@ -368,11 +417,13 @@ end $$;
 -- 내 글 지우기. 자리는 그대로 찬 채로 남는다 (선착순 되돌리기 방지).
 create or replace function public.delete_my_post(p_id bigint) returns json
 language plpgsql volatile security definer set search_path = public as $$
-declare uid uuid := auth.uid();
+declare
+  uid uuid := auth.uid();
+  dev text := ink_device_of(uid);
 begin
   if uid is null then raise exception 'ink:auth'; end if;
   update ink_posts set deleted = true, body = null, src_title = null, src_author = null
-   where id = p_id and user_id = uid;
+   where id = p_id and (user_id = uid or (dev is not null and device = dev));
   if not found then raise exception 'ink:not_found'; end if;
   delete from ink_likes where post_id = p_id;
   update ink_posts set likes = 0 where id = p_id;
@@ -382,7 +433,9 @@ end $$;
 -- 내가 쓴 글 모아 보기 (최근 순).
 create or replace function public.my_posts() returns json
 language plpgsql stable security definer set search_path = public as $$
-declare uid uuid := auth.uid();
+declare
+  uid uuid := auth.uid();
+  dev text := ink_device_of(uid);
 begin
   if uid is null then return '[]'::json; end if;
   return coalesce((
@@ -390,7 +443,7 @@ begin
       'id', p.id, 'day', p.day, 'topic', ink_topic(p.day), 'slot', p.slot, 'kind', p.kind,
       'body', p.body, 'src_title', p.src_title, 'src_author', p.src_author,
       'likes', p.likes, 'hidden', p.hidden, 'deleted', p.deleted) order by p.day desc)
-    from ink_posts p where p.user_id = uid), '[]'::json);
+    from ink_posts p where p.user_id = uid or (dev is not null and p.device = dev)), '[]'::json);
 end $$;
 
 -- ─────────────────────────── 펜네임 ───────────────────────────
@@ -460,7 +513,9 @@ begin
   if uid is null then raise exception 'ink:auth'; end if;
   select * into r from ink_pens where user_id = uid for update;
   if not found then raise exception 'ink:no_pen'; end if;
-  if exists (select 1 from ink_bans where user_id = uid) then raise exception 'ink:banned'; end if;
+  if exists (select 1 from ink_bans where user_id = uid or (device is not null and device = ink_device_of(uid))) then
+    raise exception 'ink:banned';
+  end if;
   if char_length(n) < 2 or char_length(n) > 12 then raise exception 'ink:pen_len'; end if;
   if n !~ '^[가-힣A-Za-z0-9_]+$' or char_length(regexp_replace(n, '[^0-9]', '', 'g')) > 6 then
     raise exception 'ink:pen_chars';
@@ -523,14 +578,15 @@ revoke execute on function
   public.toggle_like(bigint), public.report_post(bigint, text), public.delete_my_post(bigint),
   public.my_posts(), public.get_hall(int),
   public.ink_pen_next(public.ink_pens), public.ink_pen_json(public.ink_pens),
-  public.ink_grant_pen(uuid, text, text), public.my_pen(), public.set_pen(text)
+  public.ink_grant_pen(uuid, text, text), public.my_pen(), public.set_pen(text),
+  public.ink_device_of(uuid), public.bind_device(text)
 from public, anon, authenticated;
 
 grant execute on function public.get_board(date), public.board_status(), public.get_hall(int)
   to anon, authenticated;
 grant execute on function public.post_entry(text, text, text, text), public.toggle_like(bigint),
   public.report_post(bigint, text), public.delete_my_post(bigint), public.my_posts(),
-  public.my_pen(), public.set_pen(text)
+  public.my_pen(), public.set_pen(text), public.bind_device(text)
   to authenticated;
 -- 결제 확인은 서버 함수(service_role)만.
 grant execute on function public.ink_grant_pen(uuid, text, text) to service_role;
