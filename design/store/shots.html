@@ -176,6 +176,37 @@ function rulesScreen(p) {
   </div>`;
 }
 
+function logScreen(p, owned) {
+  const box = owned
+    ? `<div class="row" style="font-size:12px"><span class="ko" style="color:${p.dim}">펜네임</span><span style="flex:1"></span><span class="ko" style="color:${p.cmd}">[보유]</span></div>
+       <div class="ko" style="font-size:20px;font-weight:700;color:${p.cmd};margin-top:4px">작은새</div>
+       <div class="ko" style="font-size:12px;color:${p.dim};margin-top:4px">10.08 09:12 이후에 바꿀 수 있어요.</div>
+       <div class="row" style="margin-top:10px;height:44px;border:1px solid ${p.line};justify-content:center;font-size:13px;color:${p.fg};opacity:.4">펜네임 바꾸기</div>`
+    : `<div class="row" style="font-size:12px"><span class="ko" style="color:${p.dim}">펜네임</span></div>
+       <div class="ko" style="font-size:16px;font-weight:700;color:${p.hi};margin-top:4px">guest_0000 대신 내 이름으로</div>
+       <div class="ko" style="font-size:12px;line-height:1.5;color:${p.dim};margin-top:4px">지금은 날마다 바뀌는 guest 이름으로 올라가요. 펜네임을 사면 올리는 글과 명예의 전당에 내 이름이 남아요. 한 번 사면 계속 쓸 수 있어요.</div>
+       <div style="margin-top:10px">${wide(p,'[ $ ]','펜네임 사기 · ₩2,200')}</div>
+       <div class="row" style="margin-top:6px;height:44px;border:1px solid ${p.line};justify-content:center;font-size:13px;color:${p.fg}">구매 복원</div>`;
+  const mine = owned
+    ? [['10.02 금 · 마지막 버스', 2, '작은새', '00:01', '마지막 버스에서 내린 사람은 나 하나였다. 기사님은 내가 내린 뒤에도 한참 문을 열어 두었다.', 11],
+       ['10.01 목 · 파란 나무', 5, 'guest_7730', '00:03', '나는 그 나무를 그리려고 물감을 샀는데, 파란색만 다 떨어져 있었다.', 6]]
+    : [['10.01 목 · 파란 나무', 5, 'guest_7730', '00:03', '나는 그 나무를 그리려고 물감을 샀는데, 파란색만 다 떨어져 있었다.', 6]];
+  const card = ([hdr, n, nick, time, body, likes]) => `<div style="padding:8px 0;border-bottom:1px solid ${p.line};background:${p.cmd}${p.light?'12':'16'}">
+    <div class="ko" style="font-size:12px;color:${p.cmd}">${hdr}</div>
+    <div class="row" style="font-size:12px;gap:8px;margin-top:2px"><span style="color:${p.dim}">#${String(n).padStart(2,'0')}</span><span class="${nick.startsWith('guest')?'':'ko'}" style="color:${p.cmd}">${nick} (나)</span><span style="color:${p.dim}">${time}</span><span style="flex:1"></span><span style="color:${p.cmd}">+${likes}</span></div>
+    <div class="ko" style="margin-top:4px;font-size:14px;line-height:1.6;color:${p.hi}">${esc(body)}</div></div>`;
+  return `<div class="app" style="width:${C.appW}px;height:${C.appH}px;background:${p.bg};color:${p.fg}">
+    ${titleBar(p, ['hall','log','규칙'], 'log')}
+    <div style="flex:1;min-height:0;overflow:hidden;padding:14px 16px 0">
+      ${prompt(p,'log --mine')}
+      <div style="margin:10px 0 14px;padding:12px;border:1px solid ${owned?p.cmd:p.line}">${box}</div>
+      <div class="ko" style="font-size:14px;color:${p.hi}">내가 쓴 글 ${mine.length}편</div>
+      <div class="ko" style="font-size:12px;color:${p.dim}">이 기기에서 쓴 글이에요. 앱을 지우면 목록도 사라져요.</div>
+      <div style="margin-top:8px">${mine.map(card).join('')}</div>
+    </div>
+    <div style="padding:8px 16px ${16+C.homeH}px">${wide(p,'[ ESC ]','게시판으로')}</div>
+  </div>`;
+}
 const FULL = [...ENTRIES, ...ENTRIES.slice(0,4).map((e,i)=>[e[0]+8+i*3, 'guest_'+(6100+i*77), '00:0'+(7+i), e[3], e[4], e[5]-3, false, e[7], e[8]])];
 const SHOTS = {
   1: { t:'자정마다 글감 하나', s:'선착순 20명 · 300자 · 익명', body:()=>boardScreen(P.cmd,{count:12, clock:'23:52:51'}) },
@@ -183,6 +214,8 @@ const SHOTS = {
   3: { t:'매일 1위, 달마다 단 한 편', s:'명예의 전당에 영구 보관', body:()=>{DAY=['11.04 수','11월 4일 (수)']; return hallScreen(P.light);} },
   4: { t:'20자리가 차면 마감', s:'Server is full. 내일 00:00 새 글감', body:()=>boardScreen(P.cmd,{count:20, clock:'23:41:07', topic:'파란 나무', entries: IP?[ENTRIES[3],ENTRIES[5],ENTRIES[0],ENTRIES[1],ENTRIES[2]]:[ENTRIES[3],ENTRIES[5],ENTRIES[0],ENTRIES[1],ENTRIES[2],ENTRIES[7],ENTRIES[6]]}) },
   5: { t:'가입 없는 익명 게시판', s:'신고 · 차단 · 신고 3번이면 바로 가려져요', body:()=>rulesScreen(P.cmd) },
+  6: { t:'guest 대신 내 이름으로', s:'펜네임 · 한 번 사면 계속, 7일에 한 번 변경', body:()=>{DAY=['10.02 금','10월 2일 (금)']; return logScreen(P.cmd, true);} },
+  pen: { t:'펜네임', s:'한 번 구매 (비소모성) · 구매 복원 지원', body:()=>logScreen(P.cmd, false) },
 };
 
 const S = SHOTS[shot];
