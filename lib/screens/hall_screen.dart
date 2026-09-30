@@ -5,6 +5,7 @@ import '../state/ink_store.dart';
 import '../theme/term_palette.dart';
 import '../widgets/entry_card.dart';
 import '../widgets/term_widgets.dart';
+import 'nav_tabs.dart';
 
 /// 명예의 전당: 오늘 지금 1위 · 이번 달 날마다 1위 · 지난달들의 이달의 1위.
 class HallScreen extends StatefulWidget {
@@ -69,7 +70,7 @@ class _HallScreenState extends State<HallScreen> {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TitleBar(palette: p, now: store.now(), active: 'hall', tabs: [('hall', null)]),
+              TitleBar(palette: p, now: store.now(), active: 'hall', tabs: navTabs(context, store, active: 'hall')),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),

@@ -5,6 +5,7 @@ import '../state/ink_store.dart';
 import '../widgets/entry_card.dart';
 import '../widgets/term_widgets.dart';
 import '../theme/term_palette.dart';
+import 'nav_tabs.dart';
 
 /// 내가 쓴 글 모아 보기.
 class LogScreen extends StatefulWidget {
@@ -46,7 +47,7 @@ class _LogScreenState extends State<LogScreen> {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TitleBar(palette: p, now: store.now(), active: 'log', tabs: [('log', null)]),
+              TitleBar(palette: p, now: store.now(), active: 'log', tabs: navTabs(context, store, active: 'log')),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),

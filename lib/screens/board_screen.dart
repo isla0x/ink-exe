@@ -5,9 +5,7 @@ import '../state/ink_store.dart';
 import '../theme/term_palette.dart';
 import '../widgets/entry_card.dart';
 import '../widgets/term_widgets.dart';
-import 'hall_screen.dart';
-import 'log_screen.dart';
-import 'rules_screen.dart';
+import 'nav_tabs.dart';
 import 'write_screen.dart';
 
 /// 메인: 오늘의 글감 + 선착순 20편 + 쓰기.
@@ -15,8 +13,6 @@ class BoardScreen extends StatelessWidget {
   const BoardScreen({super.key, required this.store});
 
   final InkStore store;
-
-  void _push(BuildContext context, Widget page) => Navigator.of(context).push(termRoute(page));
 
   Future<void> _write(BuildContext context) async {
     await Navigator.of(context).push<bool>(termRoute(WriteScreen(store: store)));
@@ -109,11 +105,7 @@ class BoardScreen extends StatelessWidget {
               TitleBar(
                 palette: p,
                 now: store.now(),
-                tabs: [
-                  ('hall', () => _push(context, HallScreen(store: store))),
-                  ('log', () => _push(context, LogScreen(store: store))),
-                  ('규칙', () => _push(context, RulesScreen(store: store, readOnly: true))),
-                ],
+                tabs: navTabs(context, store),
               ),
               Expanded(
                 child: RefreshIndicator(

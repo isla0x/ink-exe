@@ -4,6 +4,7 @@ import '../state/ink_store.dart';
 import '../theme/term_palette.dart';
 import '../widgets/term_widgets.dart';
 import 'board_screen.dart';
+import 'nav_tabs.dart';
 
 const inkRules = [
   '욕설 · 비방 · 혐오 · 성적인 글 금지',
@@ -47,7 +48,7 @@ class _RulesScreenState extends State<RulesScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TitleBar(palette: p, now: store.now(), active: widget.readOnly ? '규칙' : null,
-                  tabs: widget.readOnly ? [('규칙', null)] : const []),
+                  tabs: widget.readOnly ? navTabs(context, store, active: '규칙') : const []),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
