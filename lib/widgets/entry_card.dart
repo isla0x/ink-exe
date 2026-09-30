@@ -62,21 +62,28 @@ class EntryCard extends StatelessWidget {
             children: [
               Text(e.slotLabel, style: termStyle(p.dim, size: 12)),
               const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  e.mine ? '${e.nick} (나)' : e.nick,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: termStyle(e.mine ? p.cmd : (e.pen ? p.hi : p.fg), size: 12, ko: e.pen),
+              // 이름 · 시각 · [인용] 이 남는 폭을 모두 차지해서 +1 · ⋯ 이 항상 오른쪽 끝에 붙는다.
+              // (Flexible + Spacer 를 같이 쓰면 남는 폭을 반씩 나눠 가져서 버튼이 가운데쯤 뜬다)
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        e.mine ? '${e.nick} (나)' : e.nick,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: termStyle(e.mine ? p.cmd : (e.pen ? p.hi : p.fg), size: 12, ko: e.pen),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(e.time, style: termStyle(p.dim, size: 12)),
+                    if (e.isQuote && placeholder == null) ...[
+                      const SizedBox(width: 8),
+                      Text('[인용]', style: termStyle(p.tag, size: 12)),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(e.time, style: termStyle(p.dim, size: 12)),
-              if (e.isQuote && placeholder == null) ...[
-                const SizedBox(width: 8),
-                Text('[인용]', style: termStyle(p.tag, size: 12)),
-              ],
-              const Spacer(),
               if (onLike != null && placeholder == null)
                 Semantics(
                   button: true,

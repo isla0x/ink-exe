@@ -174,4 +174,18 @@ void main() {
     await settle(tester);
     expect(find.text('작은새 (나)'), findsOneWidget);
   });
+
+  testWidgets('+1 · ⋯ 버튼은 이름 길이와 상관없이 오른쪽 끝에 붙는다', (tester) async {
+    await boot(tester, agreed: true, others: 3);
+    final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    final menus = find.text('⋯');
+    expect(menus, findsNWidgets(3));
+    for (final m in menus.evaluate()) {
+      final right = tester.getRect(find.byWidget(m.widget)).right;
+      expect(right, greaterThan(width - 16 - 44), reason: '⋯ 은 화면 오른쪽 여백 바로 안쪽');
+    }
+    final likes = find.textContaining(RegExp(r'^\+\d+$'));
+    final xs = [for (final l in likes.evaluate()) tester.getRect(find.byWidget(l.widget)).center.dx];
+    expect(xs.toSet().length, 1, reason: '+N 버튼이 한 줄로 세로 정렬');
+  });
 }
