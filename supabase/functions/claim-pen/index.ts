@@ -1,8 +1,12 @@
 // 펜네임 결제 확인 (Supabase Edge Function: claim-pen)
 //
-// 앱 → { jws } (StoreKit 2 거래 영수증) + 로그인 토큰
+// 앱 → 로그인 토큰 + 영수증 하나
+//   iOS    : { jws }                         StoreKit 2 거래 영수증
+//   Android: { google: { data, signature } } Google Play 구매 원본 JSON + 서명
 //   1. 로그인한 익명 사용자가 누구인지 확인
-//   2. Apple 서명 · 번들 · 상품 · 환불 여부 확인 (verifyAppleJws · checkPenPurchase)
+//   2. iOS: Apple 서명 · 번들 · 상품 · 환불 여부 확인 (verifyAppleJws · checkPenPurchase)
+//      Android: Google Play 라이선스 공개키로 서명 확인 · 패키지 · 상품 · 구매 완료 여부 (verifyGooglePurchase)
+//      공개키는 Supabase 함수 Secrets 의 GOOGLE_PLAY_PUBLIC_KEY (Play Console → 수익 창출 설정 → 라이선스)
 //   3. service_role 로 ink_grant_pen 을 불러 이 사용자에게 펜네임 권한을 준다
 // ← { owned, name, next_change } 또는 { error: '<코드>' }
 //
@@ -14,6 +18,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const BUNDLE_ID = 'com.isla0x.inkExe';
 const PRODUCT_ID = 'ink_exe_pen'; // lib/state/pen_shop.dart 의 PenShop.productId 와 같게
+const PACKAGE_NAME = 'com.isla0x.ink_exe'; // android/app/build.gradle.kts 의 applicationId
 
 x509.cryptoProvider.set(crypto);
 
@@ -98,6 +103,63 @@ export function checkPenPurchase(
   return { txn, env: String(t.environment ?? '') };
 }
 
+// ─────────────── Google Play 구매 확인 ───────────────
+// Play 가 구매 원본 JSON 을 앱의 라이선스 키(RSA)로 서명해 준다 (SHA1withRSA).
+// 공개키로 서명만 확인하면 돼서 서비스 계정 같은 비밀 키가 필요 없다.
+
+function b64ToBuf(s: string) {
+  return Uint8Array.from(atob(s.replace(/\s+/g, '')), (c) => c.charCodeAt(0));
+}
+
+/** 서명이 맞으면 구매 내용(JSON)을 돌려준다. */
+export async function verifyGooglePurchase(
+  data: unknown,
+  signature: unknown,
+  publicKeyB64: string | undefined,
+  // deno-lint-ignore no-explicit-any
+): Promise<Record<string, any>> {
+  if (!publicKeyB64) throw new JwsError('no_key');
+  if (typeof data !== 'string' || typeof signature !== 'string' || !data || !signature) throw new JwsError('format');
+  let key: CryptoKey;
+  try {
+    key = await crypto.subtle.importKey(
+      'spki', b64ToBuf(publicKeyB64), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' }, false, ['verify'],
+    );
+  } catch {
+    throw new JwsError('bad_key');
+  }
+  let sig: Uint8Array<ArrayBuffer>;
+  try {
+    sig = b64ToBuf(signature);
+  } catch {
+    throw new JwsError('format');
+  }
+  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sig, new TextEncoder().encode(data));
+  if (!ok) throw new JwsError('signature');
+  try {
+    return JSON.parse(data);
+  } catch {
+    throw new JwsError('format');
+  }
+}
+
+/** Google Play 펜네임 구매가 맞는지. 맞으면 {txn, env}. txn 은 구매 토큰 (구매 복원해도 같다). */
+export function checkGooglePenPurchase(
+  // deno-lint-ignore no-explicit-any
+  p: Record<string, any>,
+  { packageName, productId }: { packageName: string; productId: string },
+): { txn: string; env: string } {
+  if (p.packageName !== packageName) throw new JwsError('bundle');
+  const products: unknown[] = Array.isArray(p.productIds) ? p.productIds : [p.productId];
+  if (!products.includes(productId)) throw new JwsError('product');
+  // purchaseState: 0 구매 완료 · 1 취소 · 2 대기
+  if ((p.purchaseState ?? 0) !== 0) throw new JwsError('state');
+  const token = String(p.purchaseToken ?? '');
+  if (!token) throw new JwsError('txn');
+  // 라이선스 테스터의 테스트 구매는 주문 번호가 없다.
+  return { txn: 'gp:' + token, env: p.orderId ? 'GooglePlay' : 'GooglePlayTest' };
+}
+
 // ─────────────── 요청 처리 ───────────────
 
 const cors = {
@@ -134,17 +196,23 @@ Deno.serve(async (req) => {
   const { data: u, error: authError } = token ? await admin.auth.getUser(token) : { data: null, error: true };
   if (authError || !u?.user) return reply(401, { error: 'auth' });
 
-  let jws: unknown;
+  // deno-lint-ignore no-explicit-any
+  let body: any;
   try {
-    ({ jws } = await req.json());
+    body = await req.json();
   } catch {
     return reply(400, { error: 'pen_receipt' });
   }
 
   let txn: string, env: string;
   try {
-    const t = await verifyAppleJws(jws);
-    ({ txn, env } = checkPenPurchase(t, { bundleId: BUNDLE_ID, productId: PRODUCT_ID }));
+    if (body?.google) {
+      const p = await verifyGooglePurchase(body.google.data, body.google.signature, Deno.env.get('GOOGLE_PLAY_PUBLIC_KEY'));
+      ({ txn, env } = checkGooglePenPurchase(p, { packageName: PACKAGE_NAME, productId: PRODUCT_ID }));
+    } else {
+      const t = await verifyAppleJws(body?.jws);
+      ({ txn, env } = checkPenPurchase(t, { bundleId: BUNDLE_ID, productId: PRODUCT_ID }));
+    }
   } catch (e) {
     const why = e instanceof JwsError ? e.message : 'unknown';
     console.warn('claim-pen rejected:', why);

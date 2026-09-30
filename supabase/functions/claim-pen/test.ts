@@ -5,7 +5,7 @@ import * as x509 from 'npm:@peculiar/x509@1.14.3';
 // index.ts 를 불러올 때 서버가 뜨지 않게.
 // deno-lint-ignore no-explicit-any
 (Deno as any).serve = () => {};
-const { verifyAppleJws, checkPenPurchase, JwsError } = await import('./index.ts');
+const { verifyAppleJws, checkPenPurchase, verifyGooglePurchase, checkGooglePenPurchase, JwsError } = await import('./index.ts');
 
 x509.cryptoProvider.set(crypto);
 const P256 = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
@@ -123,4 +123,63 @@ Deno.test('다른 앱 · 다른 상품 · 환불된 구매는 거절', () => {
   bad({ ...tx, productId: 'diary_exe_pro' }, 'product');
   bad({ ...tx, revocationDate: 1760000000000 }, 'revoked');
   bad({ ...tx, originalTransactionId: '' }, 'txn');
+});
+
+// ─────────────── Google Play ───────────────
+
+async function googleKey() {
+  const k = await crypto.subtle.generateKey(
+    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-1' },
+    true, ['sign', 'verify'],
+  ) as CryptoKeyPair;
+  const spki = new Uint8Array(await crypto.subtle.exportKey('spki', k.publicKey));
+  return { priv: k.privateKey, pub: b64(spki) };
+}
+async function gsign(priv: CryptoKey, data: string) {
+  return b64(new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', priv, new TextEncoder().encode(data))));
+}
+const gp = {
+  orderId: 'GPA.1234-5678', packageName: 'com.isla0x.ink_exe', productId: 'ink_exe_pen',
+  purchaseTime: 1760000000000, purchaseState: 0, purchaseToken: 'tok-abc', acknowledged: false,
+};
+const gwant = { packageName: 'com.isla0x.ink_exe', productId: 'ink_exe_pen' };
+
+Deno.test('Google: 정상 구매는 통과하고 구매 토큰을 거래 번호로', async () => {
+  const k = await googleKey();
+  const data = JSON.stringify(gp);
+  const p = await verifyGooglePurchase(data, await gsign(k.priv, data), k.pub);
+  const r = checkGooglePenPurchase(p, gwant);
+  if (r.txn !== 'gp:tok-abc' || r.env !== 'GooglePlay') throw new Error(JSON.stringify(r));
+  const t = checkGooglePenPurchase({ ...gp, orderId: undefined }, gwant);
+  if (t.env !== 'GooglePlayTest') throw new Error('test purchase env');
+  const multi = checkGooglePenPurchase({ ...gp, productId: undefined, productIds: ['ink_exe_pen'] }, gwant);
+  if (multi.txn !== 'gp:tok-abc') throw new Error('productIds');
+});
+
+Deno.test('Google: 내용을 바꾸거나 다른 키로 서명하면 거절', async () => {
+  const k = await googleKey(), other = await googleKey();
+  const data = JSON.stringify(gp);
+  const sig = await gsign(k.priv, data);
+  await rejects(verifyGooglePurchase(JSON.stringify({ ...gp, productId: 'x' }), sig, k.pub), 'signature');
+  await rejects(verifyGooglePurchase(data, await gsign(other.priv, data), k.pub), 'signature');
+  await rejects(verifyGooglePurchase(data, sig, undefined), 'no_key');
+  await rejects(verifyGooglePurchase(data, sig, 'bm90LWEta2V5'), 'bad_key');
+  await rejects(verifyGooglePurchase('', sig, k.pub), 'format');
+});
+
+Deno.test('Google: 다른 앱 · 다른 상품 · 취소 · 대기 중 구매는 거절', () => {
+  const bad = (p: Record<string, unknown>, why: string) => {
+    try {
+      checkGooglePenPurchase(p, gwant);
+    } catch (e) {
+      if (e instanceof JwsError && e.message === why) return;
+      throw e;
+    }
+    throw new Error(`expected ${why}`);
+  };
+  bad({ ...gp, packageName: 'com.other' }, 'bundle');
+  bad({ ...gp, productId: 'todo_exe_pro' }, 'product');
+  bad({ ...gp, purchaseState: 1 }, 'state');
+  bad({ ...gp, purchaseState: 2 }, 'state');
+  bad({ ...gp, purchaseToken: '' }, 'txn');
 });

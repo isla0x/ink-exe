@@ -23,11 +23,13 @@ C:\ink> topic
 2. SQL Editor 에 `supabase/schema.sql` 붙여 넣고 Run (다시 실행해도 안전)
 3. `lib/config.dart` 에 Project URL · anon 키 (또는 `--dart-define=SUPABASE_URL=… --dart-define=SUPABASE_ANON_KEY=…`)
 4. 펜네임: Edge Functions → Deploy a new function → Via Editor, 이름 `claim-pen`, `supabase/functions/claim-pen/index.ts` 를 통째로 붙여 넣고 Deploy
-   (또는 `supabase functions deploy claim-pen --project-ref <ref>`). App Store Connect 에 비소모성 상품 `ink_exe_pen` 생성
+   (또는 `supabase functions deploy claim-pen --project-ref <ref>`). App Store Connect · Google Play Console 에 비소모성 상품 `ink_exe_pen` 생성.
+   안드로이드: 함수 Secrets 에 `GOOGLE_PLAY_PUBLIC_KEY` (Play Console → 수익 창출 설정 → 라이선스의 Base64 공개키)
    함수 Settings 의 **Verify JWT with legacy secret 은 끈다** (프로젝트가 ES256 서명 키를 써서 사용자 토큰이 legacy 검사를 못 통과한다. 로그인 확인은 함수 코드가 직접 한다)
 
 ### 펜네임 결제 확인
-앱(StoreKit 2)이 받은 거래 영수증(JWS)을 `claim-pen` 함수로 보낸다. 함수는 Apple 인증서 체인(Apple Root CA G3 지문) ·
+앱이 받은 영수증을 `claim-pen` 함수로 보낸다. 안드로이드는 구매 원본 JSON 과 서명을 보내고, 함수가 Google Play 라이선스 공개키(SHA1withRSA)로 확인한다.
+iOS 는 StoreKit 2 거래 영수증(JWS). 함수는 Apple 인증서 체인(Apple Root CA G3 지문) ·
 ES256 서명 · 번들 ID · 상품 ID · 환불 여부를 확인한 뒤 service_role 로 `ink_grant_pen` 을 부른다. 외부 키(.p8)는 필요 없다.
 앱은 `ink_grant_pen` 을 직접 부를 수 없다. 테스트: `deno test --allow-net --allow-env --allow-read supabase/functions/claim-pen/test.ts`
 

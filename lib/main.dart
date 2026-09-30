@@ -25,8 +25,10 @@ Future<void> main() async {
   if (hasServer) {
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
     api = SupabaseInkApi(Supabase.instance.client);
-    // 펜네임 결제는 App Store 에서만 (서버가 Apple 영수증만 확인한다).
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) shop = IapPenShop();
+    // 펜네임 결제: App Store · Google Play (서버 claim-pen 이 두 곳의 서명을 확인한다).
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android)) {
+      shop = IapPenShop();
+    }
   } else {
     // 서버 주소가 없으면 기기 안에서만 도는 데모.
     api = DemoInkApi(seed: true);

@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../state/pen_shop.dart' show ShopEvent;
 import 'ink_api.dart';
 import 'models.dart';
 
@@ -87,7 +90,10 @@ class SupabaseInkApi implements InkApi {
   @override
   Future<PenStatus> claimPen(String receipt) async {
     try {
-      final res = await client.functions.invoke('claim-pen', body: {'jws': receipt});
+      final body = receipt.startsWith(ShopEvent.googleReceiptPrefix)
+          ? {'google': jsonDecode(receipt.substring(ShopEvent.googleReceiptPrefix.length))}
+          : {'jws': receipt};
+      final res = await client.functions.invoke('claim-pen', body: body);
       return PenStatus.fromJson(_map(res.data));
     } on FunctionException catch (e) {
       final d = e.details;

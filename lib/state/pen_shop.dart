@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
 /// 결제 창구에서 온 소식.
 enum ShopStatus { pending, done, error, canceled }
@@ -11,8 +13,12 @@ class ShopEvent {
 
   final ShopStatus status;
 
-  /// done 일 때: 서버에 보낼 영수증 (StoreKit 2 JWS)
+  /// done 일 때: 서버에 보낼 영수증.
+  ///   iOS    : StoreKit 2 JWS
+  ///   Android: [googleReceiptPrefix] + {"data": 구매 원본 JSON, "signature": Google 서명} (JSON)
   final String? receipt;
+
+  static const googleReceiptPrefix = 'gp:';
   final bool restored;
   final String? error;
 
@@ -43,7 +49,7 @@ abstract class PenShop {
   void dispose();
 }
 
-/// App Store 인앱결제 (in_app_purchase, StoreKit 2).
+/// App Store (StoreKit 2) · Google Play 인앱결제 (in_app_purchase).
 class IapPenShop implements PenShop {
   IapPenShop({InAppPurchase? iap}) : _iap = iap ?? InAppPurchase.instance;
 
@@ -112,7 +118,7 @@ class IapPenShop implements PenShop {
         case PurchaseStatus.purchased || PurchaseStatus.restored:
           _events.add(ShopEvent(
             ShopStatus.done,
-            receipt: p.verificationData.serverVerificationData,
+            receipt: _receiptOf(p),
             restored: p.status == PurchaseStatus.restored,
             raw: p,
           ));
@@ -124,6 +130,15 @@ class IapPenShop implements PenShop {
           if (p.pendingCompletePurchase) unawaited(_iap.completePurchase(p));
       }
     }
+  }
+
+  /// 서버(claim-pen)가 확인할 수 있는 영수증.
+  static String _receiptOf(PurchaseDetails p) {
+    if (p is GooglePlayPurchaseDetails) {
+      final b = p.billingClientPurchase;
+      return ShopEvent.googleReceiptPrefix + jsonEncode({'data': b.originalJson, 'signature': b.signature});
+    }
+    return p.verificationData.serverVerificationData;
   }
 
   @override
