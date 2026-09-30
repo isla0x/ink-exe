@@ -163,12 +163,13 @@ begin
   assert (public.get_board(date '2099-01-01') ->> 'day') = '2026-10-02', 'future clamps to today';
 end $$;
 
--- ── 9. 명예의 전당: 이번 달은 날마다 1위, 인용글 제외 ──
+-- ── 9. 명예의 전당: 이번 달은 날마다 1위 (인용글도 포함) ──
 do $$ declare h json;
 begin
   h := public.get_hall();
   assert json_array_length(h -> 'month') = 1, 'one day so far';
-  assert (h -> 'month' -> 0 ->> 'body') = '글 3', 'quote (9) excluded, original (5) wins';
+  assert (h -> 'month' -> 0 ->> 'body') = '새는 알에서 나오려고 투쟁한다.', 'quote (9) beats original (5)';
+  assert (h -> 'month' -> 0 ->> 'src_title') = '데미안';
   assert (h -> 'month' -> 0 ->> 'topic') = '파란 나무';
   assert json_array_length(h -> 'champions') = 0;
 end $$;
@@ -179,8 +180,8 @@ set ink.fake_now = '2026-11-01 09:00:00+09';
 set role authenticated;
 do $$ declare h json;
 begin
-  -- 10.02 글에 +1 7개 → 10월 1위가 바뀐다
-  for i in 30..36 loop
+  -- 10.02 글에 +1 10개 → 10월 1위가 바뀐다 (인용 9개보다 많음)
+  for i in 30..39 loop
     perform set_config('request.jwt.claim.sub', t.u(i)::text, false);
     perform public.toggle_like((public.get_board(date '2026-10-02') -> 'posts' -> 0 ->> 'id')::bigint);
   end loop;
@@ -189,13 +190,13 @@ begin
   assert json_array_length(h -> 'champions') = 1;
   assert (h -> 'champions' -> 0 ->> 'body') = '다음 날';
   assert (h -> 'champions' -> 0 ->> 'month') = '2026.10';
-  assert (h -> 'champions' -> 0 ->> 'likes')::int = 7;
+  assert (h -> 'champions' -> 0 ->> 'likes')::int = 10;
 end $$;
 
 -- ── 11. 차단된 사용자 · 내 글 모아보기 ──
 reset role;
 insert into public.ink_bans (user_id, reason) values (t.u(40), 'test');
-update public.ink_settings set hall_includes_quotes = true;
+update public.ink_settings set hall_includes_quotes = false;
 set role authenticated;
 select set_config('request.jwt.claim.sub', t.u(40)::text, false);
 select t.expect($q$ select public.post_entry('나도') $q$, 'ink:banned');
@@ -207,6 +208,18 @@ begin
   assert json_array_length(m) = 2;
   assert (m -> 0 ->> 'day') = '2026-10-02';
   assert (m -> 1 ->> 'topic') = '파란 나무';
+end $$;
+reset role;
+
+-- 설정으로 인용글을 빼면 창작 1위(글 3)가 10.01 1위 후보가 된다.
+reset role;
+set ink.fake_now = '2026-10-02 12:00:00+09';
+set role authenticated;
+select set_config('request.jwt.claim.sub', t.u(1)::text, false);
+do $$ declare h json;
+begin
+  h := public.get_hall();
+  assert (h -> 'month' -> 0 ->> 'body') = '글 3', 'quotes excluded by setting';
 end $$;
 reset role;
 

@@ -193,7 +193,7 @@ class _WriteScreenState extends State<WriteScreen> {
                         Expanded(
                           child: Text(
                             _kind == EntryKind.quote
-                                ? '명예의 전당에는 창작 글만 올라가요.'
+                                ? '인용도 출처와 함께 명예의 전당에 오를 수 있어요.'
                                 : '한 번 올리면 고칠 수 없어요. 지우기만 할 수 있어요.',
                             style: termStyle(p.dim, size: 12, ko: true),
                           ),

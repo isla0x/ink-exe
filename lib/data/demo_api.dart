@@ -171,7 +171,7 @@ class DemoInkApi implements InkApi {
     p.likers.clear();
   }
 
-  bool _eligible(_P p) => !p.hidden && !p.deleted && p.likers.isNotEmpty && p.kind == EntryKind.original;
+  bool _eligible(_P p) => !p.hidden && !p.deleted && p.likers.isNotEmpty;
 
   _P? _top(Iterable<_P> ps) {
     final list = ps.where(_eligible).toList()

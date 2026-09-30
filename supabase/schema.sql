@@ -22,7 +22,7 @@ create table if not exists public.ink_settings (
   cap int not null default 20 check (cap between 1 and 500),
   max_len int not null default 300 check (max_len between 10 and 2000),
   hide_after_reports int not null default 3 check (hide_after_reports >= 1),
-  hall_includes_quotes boolean not null default false,
+  hall_includes_quotes boolean not null default true,
   topic_epoch date not null default date '2026-10-01'
 );
 insert into public.ink_settings (id) values (1) on conflict (id) do nothing;
@@ -182,7 +182,7 @@ language sql stable as $$
   )
 $$;
 
--- 명예의 전당 후보: 가려지거나 지워지지 않았고 +1 이 하나 이상. (설정에 따라 인용글 제외)
+-- 명예의 전당 후보: 가려지거나 지워지지 않았고 +1 이 하나 이상. (hall_includes_quotes = false 면 인용글 제외)
 create or replace function public.ink_hall_eligible(p public.ink_posts) returns boolean
 language sql stable as $$
   select not p.hidden and not p.deleted and p.likes >= 1

@@ -91,7 +91,7 @@ void main() {
     expect(store.notice!.$2, contains('마지막 버스'));
   });
 
-  test('명예의 전당: 이번 달 날마다 1위, 인용 제외, 다음 달엔 한 편만', () async {
+  test('명예의 전당: 이번 달 날마다 1위 (인용 포함), 다음 달엔 한 편만', () async {
     await api.postAs('a', '창작 1');
     await api.postAs('b', '인용', kind: EntryKind.quote, title: '데미안', author: '헤르만 헤세');
     for (final u in ['x', 'y', 'z']) {
@@ -107,13 +107,14 @@ void main() {
 
     now = DateTime(2026, 10, 3, 9);
     await store.loadHall();
-    expect(store.hall.month.map((e) => e.body), ['둘째 날 창작', '창작 1']);
+    expect(store.hall.month.map((e) => e.body), ['둘째 날 창작', '인용']);
+    expect(store.hall.month.last.source, '— 『데미안』, 헤르만 헤세');
     expect(store.hall.month.last.topic, '파란 나무');
 
     now = DateTime(2026, 11, 1, 9);
     await store.loadHall();
     expect(store.hall.month, isEmpty);
-    expect(store.hall.champions.single.body, '둘째 날 창작');
+    expect(store.hall.champions.single.body, '인용');
     expect(store.hall.champions.single.month, '2026.10');
   });
 

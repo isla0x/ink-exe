@@ -79,7 +79,7 @@ class _HallScreenState extends State<HallScreen> {
                       TextSpan(text: 'type hall.txt', style: termStyle(p.cmd)),
                     ])),
                     Text('명예의 전당', style: termStyle(p.hi, size: 22, weight: FontWeight.w700, ko: true)),
-                    Text('날마다 +1 1위 창작 글이 이달 전당에 오르고, 달이 끝나면 그중 한 편만 남아요.',
+                    Text('날마다 +1 1위 글이 이달 전당에 오르고, 달이 끝나면 그중 한 편만 남아요.',
                         style: termStyle(p.dim, size: 12, ko: true)),
                     if (_loading)
                       Padding(
@@ -98,7 +98,7 @@ class _HallScreenState extends State<HallScreen> {
                       ],
                       _section(p, '${h.monthLabel} · 날마다 1위', null),
                       if (h.month.isEmpty)
-                        Text('아직 비어 있어요. 오늘 +1을 가장 많이 받은 창작 글이 내일 여기 올라와요.',
+                        Text('아직 비어 있어요. 오늘 +1을 가장 많이 받은 글이 내일 여기 올라와요.',
                             style: termStyle(p.dim, size: 13, ko: true))
                       else
                         for (final e in h.month) card(e, _dayHeader(e)),
