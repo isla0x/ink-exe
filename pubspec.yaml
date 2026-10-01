@@ -1,7 +1,7 @@
 name: ink_exe
 description: "ink.exe — 매일 글감 하나, 선착순 20명이 쓰는 익명 짧은 글 게시판"
 publish_to: "none"
-version: 1.0.0+8
+version: 1.0.0+9
 
 environment:
   sdk: ^3.5.0
@@ -27,7 +27,7 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   android: "ic_launcher"
-  adaptive_icon_background: "#0C0C0C"
+  adaptive_icon_background: "#191918"
   adaptive_icon_foreground: "assets/icon/icon-foreground.png"
 
 flutter:
