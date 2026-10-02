@@ -15,7 +15,7 @@ void main() {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
-    SharedPreferences.setMockInitialValues({'ink_rules_v1': agreed});
+    SharedPreferences.setMockInitialValues({'ink_rules_v2': agreed});
     api = DemoInkApi(clock: () => now);
     for (var i = 0; i < others; i++) {
       await api.postAs('u$i', '다른 사람 글 $i');
@@ -41,7 +41,7 @@ void main() {
     await settle(tester);
     expect(find.text('오늘의 글감 게시판'), findsOneWidget);
 
-    await tester.tap(find.text('위 규칙과 이용약관에 동의하고, 만 14세 이상이에요.'));
+    await tester.tap(find.text('이용약관(EULA)과 위 규칙에 동의하고, 만 18세 이상이에요.'));
     await tester.pump();
     await tester.tap(find.text('입장하기'));
     await settle(tester);

@@ -63,6 +63,7 @@ class _HallScreenState extends State<HallScreen> {
               palette: p,
               expanded: true,
               blocked: store.blocked.contains(e.author),
+              reported: store.reported.contains(e.id),
               header: header,
             );
         return Scaffold(

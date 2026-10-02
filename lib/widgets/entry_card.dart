@@ -11,6 +11,7 @@ class EntryCard extends StatelessWidget {
     required this.palette,
     required this.expanded,
     required this.blocked,
+    this.reported = false,
     this.onTap,
     this.onLike,
     this.onMenu,
@@ -21,6 +22,9 @@ class EntryCard extends StatelessWidget {
   final TermPalette palette;
   final bool expanded;
   final bool blocked;
+
+  /// 내가 신고한 글: 신고하자마자 내 화면에서 숨긴다.
+  final bool reported;
   final VoidCallback? onTap;
   final VoidCallback? onLike;
   final VoidCallback? onMenu;
@@ -38,6 +42,8 @@ class EntryCard extends StatelessWidget {
       placeholder = '(작성자가 지운 글)';
     } else if (e.hidden && !e.mine) {
       placeholder = '(신고가 쌓여 가려진 글)';
+    } else if (reported && !e.mine) {
+      placeholder = '(내가 신고한 글 · 숨김)';
     } else if (blocked && !e.mine) {
       placeholder = '(차단한 사람의 글)';
     }

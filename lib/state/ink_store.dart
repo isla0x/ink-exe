@@ -27,7 +27,9 @@ class InkStore extends ChangeNotifier {
   /// 테스트에서는 끈다 (타이머가 남으면 테스트가 끝나지 않는다).
   final bool autoRefresh;
 
-  static const _rulesKey = 'ink_rules_v1';
+  // v2: 이용약관(EULA) · 만 18세 · 무관용 원칙. 예전에 동의한 사람도 한 번 더 동의한다.
+  static const _rulesKey = 'ink_rules_v2';
+  static const _reportedKey = 'ink_reported_v1';
   static const _blockKey = 'ink_blocked_v1';
   static const _themeKey = 'ink_theme_v1';
 
@@ -54,6 +56,9 @@ class InkStore extends ChangeNotifier {
 
   bool agreed = false;
   final Set<String> blocked = {};
+
+  /// 내가 신고한 글 id. 신고하자마자 내 화면에서 숨긴다 (서버 집계와 상관없이).
+  final Set<int> reported = {};
 
   /// 펼쳐 본 글
   final Set<int> expanded = {};
@@ -103,6 +108,7 @@ class InkStore extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
     agreed = _prefs!.getBool(_rulesKey) ?? false;
     blocked.addAll(_prefs!.getStringList(_blockKey) ?? const []);
+    reported.addAll((_prefs!.getStringList(_reportedKey) ?? const []).map(int.tryParse).whereType<int>());
     final mode = _prefs!.getString(_themeKey);
     if (mode != null && themeModes.contains(mode)) themeMode = mode;
     brightness.value = isLight ? Brightness.light : Brightness.dark;
@@ -202,9 +208,18 @@ class InkStore extends ChangeNotifier {
   }
 
   Future<void> report(Entry e, String reason) async {
+    // 먼저 내 화면에서 바로 숨긴다.
+    reported.add(e.id);
+    await _prefs?.setStringList(_reportedKey, [for (final id in reported) '$id']);
+    notifyListeners();
     try {
       final hidden = await api.report(e.id, reason);
-      notice = ('ok', hidden ? '신고했어요. 이 글은 가려졌어요.' : '신고했어요. 3번 쌓이면 바로 가려져요.');
+      notice = (
+        'ok',
+        hidden
+            ? '신고했어요. 이 글은 모두에게 가려졌어요. 운영자가 24시간 안에 확인해요.'
+            : '신고했어요. 이 글은 내 화면에서 바로 숨겼어요. 운영자가 24시간 안에 확인해요.',
+      );
       await refresh(quiet: true);
     } on InkError catch (err) {
       notice = ('err', err.message);
@@ -215,7 +230,7 @@ class InkStore extends ChangeNotifier {
   Future<void> block(Entry e) async {
     blocked.add(e.author);
     await _prefs?.setStringList(_blockKey, blocked.toList());
-    notice = ('ok', '${e.nick} 의 글은 이제 안 보여요.');
+    notice = ('ok', '${e.nick} 을(를) 차단했어요. 이 사람의 글은 이제 안 보여요.');
     notifyListeners();
   }
 

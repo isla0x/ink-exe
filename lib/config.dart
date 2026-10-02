@@ -11,4 +11,7 @@ const supabaseAnonKey = String.fromEnvironment(
   defaultValue: 'sb_publishable_AbU7JlZV_FAoXJXdwE9egg_YUKtu94V',
 );
 
+/// 신고 · 문의 연락처 (앱 안 규칙 · 약관 화면과 docs/ 에 보인다).
+const contactEmail = 'islaay@naver.com';
+
 bool get hasServer => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;

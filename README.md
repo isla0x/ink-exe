@@ -11,7 +11,7 @@ C:\ink> topic
 
 - **글감**: 매일 00:00 (KST) 바뀜. `supabase/schema.sql` 의 60개가 순서대로 돌고, `ink_topics` 에 날짜별로 지정 가능
 - **쓰기**: 하루 한 편 · 300자 · 먼저 올린 순서대로 20명. [창작] / [인용](작품명 · 작가 필수)
-- **+1**, **신고**(3번이면 자동 가림), **차단**(기기에 저장), 내 글 지우기(자리는 유지)
+- **+1**, **신고**(내 화면에서 바로 숨김 · 3번이면 모두에게 가림), **차단**(바로 숨김 · 기기에 저장), 내 글 지우기(자리는 유지)
 - **기기 묶기**: 하루 한 편 · +1 · 신고 · 쓰기 금지를 기기 단위로 센다. 앱을 지웠다 다시 깔아 새 익명 사용자가 돼도 같은 기기로 알아본다 (iOS 키체인 UUID · Android ANDROID_ID → `bind_device`, 서버에는 SHA-256 해시만 저장)
 - **명예의 전당**: 날마다 +1 1위 글(인용 포함, 설정으로 끌 수 있음) → 달이 끝나면 그 달 1위 한 편만 영구 보관
 - **내 글(log)**
@@ -38,6 +38,15 @@ ES256 서명 · 번들 ID · 상품 ID · 환불 여부를 확인한 뒤 service
 `get_board` · `post_entry` · `toggle_like` · `report_post` · `delete_my_post` · `my_posts` · `get_hall` · `board_status` · `my_pen` · `set_pen`.
 
 운영(대시보드 Table Editor): `ink_settings`(인원 · 글자 수 · 신고 기준), `ink_posts.hidden`, `ink_bans`, `ink_banned_words`, `ink_topics`, `ink_pens.name`(부적절한 펜네임 지우기).
+
+### 신고 처리 (24시간 안에)
+
+애플 심사 규칙(1.2)대로 신고는 **24시간 안에** 확인해 글을 지우고 쓴 사람을 내보낸다.
+하루 한 번 Supabase → SQL Editor 에서 `supabase/moderation.sql` 의 ①로 신고된 글을 보고, 규칙 위반이면 ②(글 숨기기 + 기기까지 쓰기 금지)를 실행한다.
+신고 · 문의 메일: islaay@naver.com (앱 [규칙] · 약관 화면, docs/ 에 공개).
+
+앱 쪽 안전장치: 이용약관(EULA) · 만 18세 동의(첫 실행, 약관이 바뀌면 다시) · 금지어 · 링크 걸러내기(서버) ·
+신고(신고한 사람 화면에서 바로 숨김, 3번이면 모두에게 가림) · 작성자 차단(바로 숨김, 기기에 저장) · 내 글 지우기.
 
 서버 규칙 테스트: `bash supabase/test/run.sh` (빈 Postgres 필요, CI 에서 자동 실행)
 

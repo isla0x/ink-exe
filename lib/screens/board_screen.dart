@@ -61,6 +61,9 @@ class BoardScreen extends StatelessWidget {
         children: [
           Text('C:\\ink> report ${e.slotLabel} · ${e.nick}', style: termStyle(p.dim, size: 13)),
           const SizedBox(height: 8),
+          Text('신고하면 이 글은 바로 내 화면에서 사라지고, 운영자가 24시간 안에 확인해 지우고 쓴 사람을 내보내요.',
+              style: termStyle(p.fg, size: 12, ko: true)),
+          const SizedBox(height: 8),
           Text('신고 이유', style: termStyle(p.hi, size: 13)),
           const SizedBox(height: 6),
           for (final (key, label) in reportReasons)
@@ -78,7 +81,7 @@ class BoardScreen extends StatelessWidget {
           const SizedBox(height: 6),
           TermBoxButton(
             palette: p,
-            label: '이 사람 글 안 보기 (차단)',
+            label: '이 사람 차단하기 (글 바로 숨김)',
             textColor: p.warn,
             onTap: () {
               Navigator.of(sheet).pop();
@@ -155,6 +158,7 @@ class BoardScreen extends StatelessWidget {
                             palette: p,
                             expanded: store.expanded.contains(e.id),
                             blocked: store.blocked.contains(e.author),
+                            reported: store.reported.contains(e.id),
                             onTap: () => store.toggleExpanded(e),
                             onLike: () => store.toggleLike(e),
                             onMenu: () => _menu(context, e),

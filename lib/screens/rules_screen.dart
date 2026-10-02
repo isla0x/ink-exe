@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/ink_store.dart';
+import 'terms_screen.dart';
 import '../theme/term_palette.dart';
 import '../widgets/term_widgets.dart';
 import 'board_screen.dart';
@@ -11,8 +12,10 @@ const inkRules = [
   '이름 · 연락처 · SNS 계정 등 개인정보 금지',
   '광고 · 링크 · 도배 금지',
   '다른 작품을 옮겨 적을 땐 작품명과 작가를 꼭 적기 (300자 이내)',
-  '신고가 3번 쌓인 글은 바로 가려지고, 24시간 안에 확인해 지워요',
-  '규칙을 어긴 기기는 쓰기가 막혀요',
+  '부적절한 글과 괴롭히는 사람은 무관용: 경고 없이 글을 지우고 쓴 사람을 내보내요',
+  '금지어 · 링크가 든 글은 올라가지 않아요',
+  '글의 ⋯ 에서 신고하면 그 글은 바로 내 화면에서 사라지고, 차단하면 그 사람 글이 모두 안 보여요',
+  '운영자는 신고를 24시간 안에 확인해 글을 지우고 쓴 사람(기기)의 쓰기를 영구히 막아요',
 ];
 
 /// 첫 실행: 규칙 동의. [readOnly] 면 규칙 다시 보기 (+ 차단 풀기).
@@ -98,8 +101,14 @@ class _RulesScreenState extends State<RulesScreen> {
                         ),
                       ),
                     const SizedBox(height: 8),
-                    Text('문의 · 신고 처리: github.com/isla0x/ink-exe/issues',
-                        style: termStyle(p.dim, size: 12)),
+                    TermBoxButton(
+                      palette: p,
+                      label: '이용약관 (EULA) 전문 보기',
+                      textColor: p.cmd,
+                      onTap: () => Navigator.of(context).push(termRoute(TermsScreen(store: store))),
+                    ),
+                    const SizedBox(height: 6),
+                    ContactLine(store: store),
                     if (widget.readOnly) ...[
                       const SizedBox(height: 18),
                       Text('차단한 사람 ${store.blocked.length}명', style: termStyle(p.fg, size: 13)),
@@ -135,7 +144,7 @@ class _RulesScreenState extends State<RulesScreen> {
                                       Text(_checked ? '[x]' : '[ ]', style: termStyle(p.cmd)),
                                       const SizedBox(width: 10),
                                       Expanded(
-                                        child: Text('위 규칙과 이용약관에 동의하고, 만 14세 이상이에요.',
+                                        child: Text('이용약관(EULA)과 위 규칙에 동의하고, 만 18세 이상이에요.',
                                             style: termStyle(p.fg, size: 13, ko: true)),
                                       ),
                                     ],

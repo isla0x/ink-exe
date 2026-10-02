@@ -85,6 +85,18 @@ void main() {
     expect(prefs.getStringList('ink_blocked_v1'), contains(e.author));
   });
 
+  test('신고 한 번이면 내 화면에서 바로 숨기고 기기에 저장', () async {
+    await api.postAs('bad', '나쁜 글');
+    await store.refresh();
+    final e = store.board!.entries.first;
+    await store.report(e, 'abuse');
+    expect(store.reported, contains(e.id));
+    expect(store.board!.entries.first.hidden, isFalse, reason: '다른 사람에겐 3번 쌓여야 가려진다');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList('ink_reported_v1'), contains('${e.id}'));
+    expect(store.notice!.$2, contains('24시간'));
+  });
+
   test('자정이 지나면 새 글감', () async {
     await store.submit('첫날');
     now = DateTime(2026, 10, 2, 0, 0, 1);
