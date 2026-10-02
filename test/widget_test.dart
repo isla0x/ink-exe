@@ -108,7 +108,9 @@ void main() {
     await tester.tap(find.text('⋯'));
     await settle(tester);
     expect(find.text('저작권 문제 (출처 없는 인용 등)'), findsOneWidget);
-    await tester.tap(find.text('이 사람 글 안 보기 (차단)'));
+    await tester.ensureVisible(find.text('이 사람 차단하기 (글 바로 숨김)'));
+    await tester.pump();
+    await tester.tap(find.text('이 사람 차단하기 (글 바로 숨김)'));
     await settle(tester);
     expect(find.text('(차단한 사람의 글)'), findsOneWidget);
   });

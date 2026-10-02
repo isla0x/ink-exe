@@ -27,7 +27,7 @@ class BoardScreen extends StatelessWidget {
       builder: (sheet) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          child: e.mine ? _mineMenu(sheet, p, e) : _reportMenu(sheet, p, e),
+          child: SingleChildScrollView(child: e.mine ? _mineMenu(sheet, p, e) : _reportMenu(sheet, p, e)),
         ),
       ),
     );
