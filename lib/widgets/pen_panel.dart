@@ -163,7 +163,10 @@ class _PenNameFormState extends State<_PenNameForm> {
   @override
   Widget build(BuildContext context) {
     final p = widget.palette;
-    return Padding(
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -215,6 +218,7 @@ class _PenNameFormState extends State<_PenNameForm> {
           ),
         ],
       ),
+    ),
     );
   }
 }

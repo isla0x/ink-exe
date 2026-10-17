@@ -100,7 +100,11 @@ class _WriteScreenState extends State<WriteScreen> {
         final over = _len > max;
         return Scaffold(
           backgroundColor: p.bg,
-          body: Column(
+          // 빈 곳을 누르면 키보드를 내린다 (글 칸을 누른 건 칸이 먼저 받는다).
+          body: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TitleBar(palette: p, now: store.now(), active: 'write', tabs: [('write', null)]),
@@ -238,6 +242,7 @@ class _WriteScreenState extends State<WriteScreen> {
                 ),
               ),
             ],
+          ),
           ),
         );
       },
