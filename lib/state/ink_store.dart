@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show Brightness;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/ink_api.dart';
+import '../data/draft.dart';
 import '../data/models.dart';
 import '../theme/term_palette.dart';
 import '../widget_sync.dart';
@@ -31,6 +33,33 @@ class InkStore extends ChangeNotifier {
   static const _rulesKey = 'ink_rules_v2';
   static const _reportedKey = 'ink_reported_v1';
   static const _blockKey = 'ink_blocked_v1';
+  static const _draftsKey = 'ink_private_drafts_v2';
+  List<Draft> drafts = [];
+  bool _draftsReadable = true;
+  Future<void> _draftWrite = Future.value();
+
+  Future<void> saveDraft(Draft draft) {
+    drafts = [draft, ...drafts.where((d) => d.id != draft.id)];
+    return _saveDrafts();
+  }
+
+  Future<void> deleteDraft(String id) {
+    drafts = drafts.where((d) => d.id != id).toList();
+    return _saveDrafts();
+  }
+
+  Future<void> _saveDrafts() {
+    if (!_draftsReadable) return Future.error(StateError('저장된 초안을 읽지 못해 원본을 보관하고 있어요.'));
+    final raw = jsonEncode([for (final d in drafts) d.toJson()]);
+    final write = _draftWrite.catchError((Object _) {}).then((_) async {
+      final prefs = _prefs ??= await SharedPreferences.getInstance();
+      if (!await prefs.setString(_draftsKey, raw)) throw StateError('초안을 저장하지 못했어요.');
+    });
+    _draftWrite = write;
+    notifyListeners();
+    return write;
+  }
+
   static const _themeKey = 'ink_theme_v1';
 
   /// 화면 모드: auto (아이폰 설정 따라감) · dark · light
@@ -107,6 +136,11 @@ class InkStore extends ChangeNotifier {
   Future<void> loadPrefs() async {
     _prefs = await SharedPreferences.getInstance();
     agreed = _prefs!.getBool(_rulesKey) ?? false;
+    final rawDrafts = _prefs!.getString(_draftsKey);
+    if (rawDrafts != null) {
+      try { drafts = [for (final d in jsonDecode(rawDrafts) as List) Draft.fromJson(Map<String, dynamic>.from(d as Map))]; }
+      catch (_) { _draftsReadable = false; notice = ('err', '초안을 읽지 못했어요. 저장된 원본은 보관되어 있어요.'); }
+    }
     blocked.addAll(_prefs!.getStringList(_blockKey) ?? const []);
     reported.addAll((_prefs!.getStringList(_reportedKey) ?? const []).map(int.tryParse).whereType<int>());
     final mode = _prefs!.getString(_themeKey);

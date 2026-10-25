@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../state/ink_store.dart';
 import '../widgets/term_widgets.dart';
 import 'hall_screen.dart';
+import 'drafts_screen.dart';
 import 'log_screen.dart';
 import 'rules_screen.dart';
 
@@ -21,6 +22,7 @@ List<(String, VoidCallback?)> navTabs(BuildContext context, InkStore store, {Str
   }
 
   return [
+    ('서랍', () => go(DraftsScreen(store: store))),
     ('hall', () => go(HallScreen(store: store))),
     ('log', () => go(LogScreen(store: store))),
     ('규칙', () => go(RulesScreen(store: store, readOnly: true))),
